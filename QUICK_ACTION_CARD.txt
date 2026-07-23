@@ -1,0 +1,79 @@
+# ⚡ QUICK ACTION CARD - DEPLOYMENT FIX
+
+**Status:** Ready to deploy ✅
+**Time to working system:** ~30 minutes
+**Your actions:** ~6 minutes
+**Automated build time:** ~20-25 minutes
+
+---
+
+## 🔴 VERCEL - RIGHT NOW (3 min)
+
+```
+URL: https://vercel.com/tonyitanielllos-projects/regguard-live/settings
+```
+
+### Step 1: Clear Root Directory
+- Tab: **General**
+- Field: **Root Directory**
+- Current: `frontend`
+- Change to: *(blank/empty)*
+- Click: **Save**
+
+### Step 2: Check Overrides OFF
+- Tab: **Build and Deployment**
+- Build Command Override: **OFF/gray** ✓
+- Output Directory Override: **OFF/gray** ✓
+- Click: **Save**
+
+### Step 3: Redeploy
+- Tab: **Deployments**
+- Click: **Redeploy** (on latest failed)
+- Wait: Green ✅
+
+---
+
+## 🟠 RENDER - THEN (3 min)
+
+```
+URL: https://dashboard.render.com/services/regguard-api/settings
+```
+
+### Step 1: Fix Build Command
+- Find: **Build Command**
+- From: `pip install -r backend/requirements.txt`
+- To: `pip install -r requirements.txt`
+- Click: **Save**
+
+### Step 2: Deploy
+- Tab: **Deployments**
+- Click: **Clear build cache & deploy**
+- Wait: Green ✅
+
+---
+
+## ✅ VERIFY (after both done)
+
+```
+https://app.regguardagent.com
+```
+
+- [ ] Page loads (no errors)
+- [ ] Try free trial button works
+- [ ] Form fills without errors
+- [ ] Can submit
+- [ ] Email arrives with research memo
+
+---
+
+## 📞 IF SOMETHING FAILS
+
+Screenshot the error from:
+- Vercel: Deployments → Logs tab
+- Render: Deployments → Logs tab
+
+Share the error and we'll debug it.
+
+---
+
+## 🎯 START: Go to Vercel now!
