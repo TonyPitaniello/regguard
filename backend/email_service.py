@@ -5,6 +5,7 @@ Supports SendGrid, Resend, or simple email backend
 
 import os
 import logging
+import traceback
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -48,10 +49,11 @@ class SendGridEmailService(EmailService):
     ) -> bool:
         """Send research memo via SendGrid"""
         if not self.sg or not self.Mail:
-            logger.error("SendGrid not configured")
+            logger.error("❌ SendGrid not configured")
             return False
 
         try:
+            logger.info(f"📧 Building SendGrid message for {to_email}...")
             message = self.Mail(
                 from_email=os.getenv("RESEND_FROM_EMAIL", "noreply@regguardagent.com"),
                 to_emails=to_email,
@@ -60,18 +62,20 @@ class SendGridEmailService(EmailService):
                 plain_text_content=self._build_text_email(address, research_memo, trial_id),
             )
 
+            logger.info(f"📧 Sending via SendGrid...")
             response = self.sg.send(message)
             success = 200 <= response.status_code < 300
 
             if success:
-                logger.info(f"Research memo sent to {to_email}")
+                logger.info(f"✅ Research memo sent to {to_email} via SendGrid (status: {response.status_code})")
             else:
-                logger.error(f"SendGrid error: {response.status_code} {response.body}")
+                logger.error(f"❌ SendGrid error: {response.status_code} - {response.body}")
 
             return success
 
         except Exception as e:
-            logger.error(f"Error sending email via SendGrid: {e}")
+            logger.error(f"❌ Error sending email via SendGrid: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
     def _build_html_email(self, address: str, research_memo: str, trial_id: str) -> str:
@@ -193,7 +197,7 @@ class ResendEmailService(EmailService):
     ) -> bool:
         """Send research memo via Resend"""
         if not self.resend:
-            logger.error("Resend not configured")
+            logger.error("❌ Resend not configured")
             return False
 
         try:
@@ -258,29 +262,34 @@ class ResendEmailService(EmailService):
 </html>
             """
 
+            logger.info(f"📧 Preparing Resend API call for {to_email}...")
             # Resend API call
             try:
+                logger.info(f"📧 Calling Resend.Emails.send()...")
                 response = self.resend.Emails.send({
                     "from": os.getenv("RESEND_FROM_EMAIL", "noreply@regguardagent.com"),
                     "to": to_email,
                     "subject": "Your Site Diligence Research Memo",
                     "html": html_content,
                 })
+                logger.info(f"📧 Resend response: {response}")
             except Exception as e:
                 logger.error(f"❌ Resend API error: {e}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 return False
 
             success = response.get("id") is not None
 
             if success:
-                logger.info(f"Research memo sent to {to_email} via Resend")
+                logger.info(f"✅ Research memo sent to {to_email} via Resend (id: {response.get('id')})")
             else:
-                logger.error(f"Resend error: {response}")
+                logger.error(f"❌ Resend error: {response}")
 
             return success
 
         except Exception as e:
-            logger.error(f"Error sending email via Resend: {e}")
+            logger.error(f"❌ Error sending email via Resend: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
 
@@ -289,12 +298,14 @@ def get_email_service() -> Optional[EmailService]:
     sendgrid_key = os.getenv("SENDGRID_API_KEY")
     resend_key = os.getenv("RESEND_API_KEY")
 
+    logger.info(f"🔍 Email service check: SendGrid={'SET' if sendgrid_key else 'NOT SET'}, Resend={'SET' if resend_key else 'NOT SET'}")
+
     if sendgrid_key:
-        logger.info("Using SendGrid email service")
+        logger.info("📧 Using SendGrid email service")
         return SendGridEmailService(sendgrid_key)
     elif resend_key:
-        logger.info("Using Resend email service")
+        logger.info("📧 Using Resend email service")
         return ResendEmailService(resend_key)
     else:
-        logger.warning("No email service configured (SENDGRID_API_KEY or RESEND_API_KEY not set)")
+        logger.error("❌ No email service configured (SENDGRID_API_KEY or RESEND_API_KEY not set)")
         return None

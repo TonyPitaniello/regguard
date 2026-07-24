@@ -6,6 +6,7 @@ Includes environmental screening via Firecrawl + Gemini
 
 import asyncio
 import logging
+import traceback
 from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -93,9 +94,10 @@ async def _run_research_and_email(
     """
     from free_trial_service import mark_memo_sent
     from email_service import get_email_service
+    import traceback
 
     try:
-        logger.info(f"Starting research for trial {trial_id}: {address}")
+        logger.info(f"🟢 Starting research for trial {trial_id}: {address}")
 
         # Step 1: Generate research memo (text format only for free trial)
         research_memo = await _generate_research_memo(
@@ -104,22 +106,32 @@ async def _run_research_and_email(
         )
 
         if not research_memo:
-            logger.error(f"Failed to generate research memo for trial {trial_id}")
+            logger.error(f"❌ Failed to generate research memo for trial {trial_id}")
             return
 
-        logger.info(f"Generated research memo for trial {trial_id} ({len(research_memo)} chars)")
+        logger.info(f"✅ Generated research memo for trial {trial_id} ({len(research_memo)} chars)")
 
         # Step 2: Run environmental screening (new feature)
-        environmental_screening = await _run_environmental_screening(address, project_type)
+        logger.info(f"🌍 Starting environmental screening for {address}...")
+        try:
+            environmental_screening = await _run_environmental_screening(address, project_type)
+            logger.info(f"✅ Environmental screening completed (result: {environmental_screening is not None})")
+        except Exception as env_error:
+            logger.error(f"⚠️  Environmental screening failed (non-critical): {env_error}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            environmental_screening = None
 
         # Step 3: Send email with research memo + environmental summary
+        logger.info(f"📧 Getting email service...")
         email_service = get_email_service()
         if not email_service:
-            logger.error("Email service not configured")
+            logger.error("❌ Email service not configured")
             return
 
+        logger.info(f"📧 Combining memo with environmental data...")
         combined_memo = _combine_memo_with_environmental(research_memo, environmental_screening)
 
+        logger.info(f"📧 Sending research memo to {email} (memo size: {len(combined_memo)} chars)...")
         success = await email_service.send_research_memo(
             to_email=email,
             address=address,
@@ -129,13 +141,15 @@ async def _run_research_and_email(
 
         if success:
             # Step 4: Mark memo as sent in database
+            logger.info(f"💾 Marking memo as sent in database...")
             mark_memo_sent(trial_id)
-            logger.info(f"Successfully sent research memo to {email} for trial {trial_id}")
+            logger.info(f"✅ Successfully sent research memo to {email} for trial {trial_id}")
         else:
-            logger.error(f"Failed to send research memo to {email}")
+            logger.error(f"❌ Failed to send research memo to {email}")
 
     except Exception as e:
-        logger.error(f"Error in research/email background task: {e}")
+        logger.error(f"❌ Error in research/email background task: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
 
 
 async def _generate_research_memo(
@@ -150,12 +164,18 @@ async def _generate_research_memo(
         # Import research functions from existing backend
         from research_memo import build_research_digest
         from jurisdiction import geocode_profile_from_address
+        import traceback
+
+        logger.info(f"🔵 Generating research memo for: {address} ({project_type})")
 
         # Geocode address to get jurisdiction profile
         profile = geocode_profile_from_address(address)
 
         if not profile:
+            logger.warning(f"⚠️  Could not geocode address: {address}")
             return "Could not geocode address. Please verify the address and try again."
+
+        logger.info(f"✅ Geocoded: {profile.city}, {profile.state_short} (ZIP: {profile.zip5})")
 
         # Build research digest (this calls all the research modules)
         # profile is a JurisdictionProfile dataclass - convert to dict for compatibility
@@ -169,6 +189,8 @@ async def _generate_research_memo(
             "scout_profile": {"vertical": "data-center"},  # Default for free tier
         }
         
+        logger.info(f"📋 Calling build_research_digest with profile: {profile.city}, {profile.state_short}")
+        
         digest = build_research_digest(
             raw=profile_dict,
             source_urls=[],
@@ -177,15 +199,20 @@ async def _generate_research_memo(
         )
 
         if not digest:
+            logger.error(f"❌ build_research_digest returned None")
             return "Could not generate research. Please try again."
+
+        logger.info(f"✅ Research digest generated ({len(str(digest))} chars)")
 
         # Extract plaintext from digest (strip HTML/markdown if needed)
         memo = _format_memo_plaintext(digest, address, project_type)
 
+        logger.info(f"✅ Formatted memo completed ({len(memo)} chars)")
         return memo
 
     except Exception as e:
-        logger.error(f"Error generating research memo: {e}")
+        logger.error(f"❌ Error generating research memo: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return None
 
 
@@ -291,6 +318,7 @@ async def _run_environmental_screening(address: str, project_type: str) -> Optio
     Firecrawl only called on premium tier
     Returns environmental assessment or None if failed
     """
+    import traceback
     try:
         from jurisdiction import geocode_profile_from_address
         import os
@@ -313,6 +341,7 @@ async def _run_environmental_screening(address: str, project_type: str) -> Optio
 
         # **FREE TIER: USE CACHED DATA ONLY (no Firecrawl API calls)**
         # This dramatically reduces costs to essentially $0 (just database lookups)
+        logger.info(f"🔍 Looking up cached environmental data for {zip_code}, {state}...")
         cached_result = _get_cached_environmental_data(zip_code, state)
         
         if cached_result:
@@ -330,6 +359,7 @@ async def _run_environmental_screening(address: str, project_type: str) -> Optio
 
     except Exception as e:
         logger.error(f"❌ Environmental screening failed: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return None
 
 
@@ -454,5 +484,6 @@ noise restrictions, NEPA compliance, and state requirements.
         return research_memo + environmental_section
 
     except Exception as e:
-        logger.error(f"Error combining memo with environmental data: {e}")
+        logger.error(f"❌ Error combining memo with environmental data: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return research_memo
