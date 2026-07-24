@@ -1,0 +1,87 @@
+# 🚀 MANUAL RENDER REDEPLOY INSTRUCTIONS
+
+## Status: Code is on GitHub ✅
+
+Latest commit: `5e623ca` (trigger: force Render redeploy)
+
+GitHub shows the new code is there, but Render webhook may not have triggered.
+
+---
+
+## 🔧 MANUAL TRIGGER - 3 OPTIONS
+
+### OPTION 1: Manual Redeploy via Dashboard (Fastest)
+
+1. Go to: **https://dashboard.render.com**
+2. Select: **regguard-api** service
+3. Click: **Manual Deploy** button (top right)
+4. Select: **Latest commit** (5e623ca)
+5. Click: **Deploy**
+
+**Expected time:** 3-5 minutes to "Live"
+
+---
+
+### OPTION 2: Check Deploy Trigger via Dashboard
+
+1. Go to: **https://dashboard.render.com**
+2. Select: **regguard-api**
+3. Look at **Deployments** tab
+4. If latest shows "Building" → It's working, just wait
+5. If latest shows "Live" → Already deployed
+6. If nothing recent → Webhook didn't fire, use Option 1
+
+---
+
+### OPTION 3: Verify from CLI (Shows deployment status)
+
+The webhook may just be slow. Code is definitely on GitHub.
+
+---
+
+## ✅ How to Know It's Deployed
+
+### Signs it's building:
+- Render dashboard shows "Building..." status
+- New deployment entry at top of Deployments list
+- Build log entries appearing in real-time
+
+### Signs it's live:
+- Status changes to "Live" (green)
+- Render logs show startup messages
+- Backend health check works: `https://api.regguardagent.com/health`
+
+---
+
+## 📋 Recommended Next Steps
+
+1. **Go to Render dashboard** and click **Manual Deploy** (fastest way)
+2. **Wait 3-5 minutes** for build to complete
+3. **Check Render logs** - should see startup messages
+4. **Test free trial** - you'll see emoji-coded logs showing each step
+
+---
+
+## 🎯 What You'll See After Deploy
+
+In Render logs:
+```
+🔵 Starting backend...
+✅ Database connected
+✅ Email service initialized
+✅ Ready to accept requests
+```
+
+When you test free trial:
+```
+🔵 Generating research memo...
+✅ Geocoded: Dallas, TX
+📋 Calling build_research_digest...
+✅ Research memo generated
+📧 Sending email...
+✅ Email sent via Resend
+```
+
+---
+
+**Next Action:** Go to https://dashboard.render.com and click **Manual Deploy** on regguard-api
