@@ -1,0 +1,114 @@
+# 🔧 RENDER CONFIGURATION FIX - STEP BY STEP
+
+## ✅ WHAT THE ISSUE IS
+
+Render is configured to pull from the **WRONG GitHub repository**.
+
+```
+Currently Configured:  TonyPitaniello/regguard-frontend  ❌
+Should Be Configured:  TonyPitaniello/regguard-live      ✓
+```
+
+Your code is in `regguard-live`, but Render is looking in `regguard-frontend` (which doesn't exist).
+
+---
+
+## 🎯 THE FIX - 8 SIMPLE STEPS
+
+### Step 1: Open Render Dashboard
+Go to: **https://dashboard.render.com**
+
+### Step 2: Select Service
+- Look for: **regguard-api** in your services
+- Click on it to open
+
+### Step 3: Open Settings
+- Click on the **Settings** tab (next to Deployments/Logs)
+- Scroll down to find: **GitHub Repo** or **Repository**
+
+### Step 4: Disconnect Current Repo
+- You should see: A link like `PitanielliPerkins/regguard-frontend` or `TonyPitaniello/regguard-frontend`
+- Click the **Disconnect** button next to it
+
+### Step 5: Connect New Repo
+- Click: **Connect Repository**
+- Search for: `regguardagent` or `regguard-live`
+- Select: **TonyPitaniello/regguard-live**
+- Click: **Connect**
+
+### Step 6: Save Settings
+- Look for and click: **Save** or **Update** button
+- You may get a notification that settings are being updated
+
+### Step 7: Manual Deploy
+- Go to: **Deployments** tab
+- Click: **Manual Deploy** button
+- Wait: 3-5 minutes for build to complete
+
+### Step 8: Verify Success
+- Watch: Deployment status changes to "Live" (green)
+- Check: Render logs show `fastapi` and `uvicorn` starting
+- Test: `curl https://api.regguardagent.com/health`
+
+---
+
+## 📸 WHAT YOU'RE LOOKING FOR
+
+### Current (Wrong):
+```
+Repository: TonyPitaniello/regguard-frontend
+↓ ❌ This doesn't exist
+```
+
+### After Fix (Correct):
+```
+Repository: TonyPitaniello/regguard-live  
+↓ ✓ This has all your code
+```
+
+---
+
+## ✅ SUCCESS INDICATORS
+
+After deployment, in Render logs you should see:
+```
+$ pip install -r backend/requirements.txt
+Successfully installed ...
+$ python -m uvicorn main:app ...
+INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+---
+
+## 🚨 IF YOU GET STUCK
+
+### Can't find Repository setting?
+- Make sure you're in the service settings, not organization settings
+- Look for: "GitHub" or "Source" section
+
+### Still seeing old repository?
+- Try disconnecting, then wait 30 seconds before reconnecting
+- Make sure you select `TonyPitaniello` (YOUR account)
+
+### Deploy still fails?
+- After fixing repository setting, do a fresh Manual Deploy
+- Wait full 5 minutes before checking status
+
+---
+
+## 🎯 FINAL VERIFICATION
+
+Once "Live", test it:
+```bash
+# Should return success
+curl https://api.regguardagent.com/health
+
+# Then test free trial
+# Go to: https://app.regguardagent.com
+# Click: Start Free Trial
+# Watch Render logs for emoji-coded flow
+```
+
+---
+
+**Action:** Update Render settings to point to `regguard-live` → Manual Deploy → Success!
