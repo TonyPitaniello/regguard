@@ -16,6 +16,8 @@ import MethodologyPage from './pages/MethodologyPage';
 import FreeTrialPage from './pages/FreeTrialPage';
 import ResultsPage from './pages/ResultsPage';
 import SampleReportPage from './pages/SampleReportPage';
+import PremiumCheckoutPage from './pages/PremiumCheckoutPage';
+import OrdersPage from './pages/OrdersPage';
 import VoiceCommandSystem from './VoiceCommandSystem';
 import OnboardingSystem from './OnboardingSystem';
 import { backendUrl } from './env';
@@ -55,6 +57,9 @@ export function AppRouter() {
           {/* Free Trial */}
           <Route path="/free-trial" element={<FreeTrialPage />} />
           <Route path="/results" element={<ResultsPage />} />
+          <Route path="/checkout/:tier" element={<PremiumCheckoutPage />} />
+          <Route path="/checkout" element={<PremiumCheckoutPage />} />
+          <Route path="/orders" element={<OrdersPage />} />
 
           {/* Sample Report */}
           <Route path="/sample-report" element={<SampleReportPage />} />
