@@ -294,7 +294,7 @@ A full environmental assessment (premium feature) includes:
     
     # Call to action
     memo += """NEXT STEP: UPGRADE TO FULL REPORT ($15,000)
-{'─' * 60}
+────────────────────────────────────────────────────────────
 
 The premium report includes:
 ✓ Complete permit package (ready to file)
