@@ -16,6 +16,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import traceback
 # Optional: Sentry error tracking
 try:
     import sentry_sdk
@@ -1245,12 +1246,13 @@ async def test_supabase() -> Dict[str, Any]:
         }
 
 @app.post("/free-trial")
-async def free_trial(request_body: FreeTrialRequest) -> FreeTrialResponse:
+async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
     """
     Handle free trial request.
     
     Accepts site address, generates research memo, emails to user.
-    Runs asynchronously in background.
+    Runs environmental analysis synchronously (for immediate display)
+    and email in background.
     
     **No credit card required**
     
@@ -1263,19 +1265,81 @@ async def free_trial(request_body: FreeTrialRequest) -> FreeTrialResponse:
         trial_id: Unique trial ID for tracking
         status: "success" or "error"
         message: Human-readable status message
+        analysis_data: IMMEDIATE analysis results (environmental + punch list)
     
-    **Response time:** Immediate (returns while research runs in background)
-    **Research delivery:** Within 24 hours via email
+    **Response time:** 30-60 seconds (includes analysis generation)
+    **Research delivery:** Email sent within 24 hours
     **Cost:** Free (memo only; upgrade to $15K for PDFs)
     """
-    response = await handle_free_trial(request_body)
+    from free_trial_handler import handle_free_trial
+    from option_a_integration import run_option_a_analysis
+    from jurisdiction import geocode_profile_from_address
     
-    logger.info(
-        f"Free trial request processed: {request_body.email} / "
-        f"{request_body.address[:50]} / Status: {response.status}"
-    )
-    
-    return response
+    try:
+        # Step 1: Handle trial creation (background email)
+        response = await handle_free_trial(request_body)
+        
+        # Step 2: Generate analysis immediately for frontend display
+        logger.info(f"🚀 Generating Option A analysis for immediate display...")
+        
+        try:
+            # Geocode address
+            profile = geocode_profile_from_address(request_body.address)
+            
+            if not profile:
+                logger.warning(f"Could not geocode {request_body.address}")
+                return {
+                    "trial_id": response.trial_id,
+                    "status": response.status,
+                    "message": response.message,
+                    "analysis_data": None,
+                }
+            
+            # Run Option A analysis
+            analysis = await run_option_a_analysis(
+                address=request_body.address,
+                city=profile.city,
+                state=profile.state_short,
+                zip_code=profile.zip5,
+                latitude=profile.latitude,
+                longitude=profile.longitude,
+                project_type=request_body.project_type,
+            )
+            
+            logger.info(f"✅ Analysis generated successfully for display")
+            
+            return {
+                "trial_id": response.trial_id,
+                "status": response.status,
+                "message": response.message,
+                "analysis_data": analysis,  # NEW: Return analysis immediately
+            }
+        except Exception as analysis_error:
+            logger.error(f"⚠️  Could not generate immediate analysis: {analysis_error}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Fallback: Return trial without analysis (email will still be sent)
+            return {
+                "trial_id": response.trial_id,
+                "status": response.status,
+                "message": response.message,
+                "analysis_data": None,  # Analysis will arrive via email
+            }
+        
+    except Exception as e:
+        logger.error(f"❌ Error in free trial endpoint: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return {
+            "trial_id": "",
+            "status": "error",
+            "message": "Failed to process free trial request. Please try again.",
+            "analysis_data": None,
+        }
+    finally:
+        logger.info(
+            f"Free trial request processed: {request_body.email} / "
+            f"{request_body.address[:50]} / Status: {response.status if 'response' in locals() else 'unknown'}"
+        )
 
 
 # ========== Results Display Endpoint (Option A MVP) ==========

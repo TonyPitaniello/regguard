@@ -78,7 +78,22 @@ export default function FreeTrialPage() {
         throw new Error('Failed to submit trial request');
       }
 
-      setSubmitted(true);
+      const data = await response.json();
+      
+      // NEW: If analysis_data returned, navigate to results page
+      if (data.analysis_data) {
+        console.log('✅ Analysis received, navigating to results page');
+        
+        // Store analysis in sessionStorage for ResultsPage
+        sessionStorage.setItem('analysisResults', JSON.stringify(data.analysis_data));
+        
+        // Navigate to results page with analysis
+        navigate('/results', { state: { analysis: data.analysis_data } });
+      } else {
+        // Fallback: Show success message (analysis will arrive via email)
+        console.log('⚠️  No immediate analysis, showing success message');
+        setSubmitted(true);
+      }
     } catch (err) {
       setError('Error submitting request. Please try again.');
       console.error(err);

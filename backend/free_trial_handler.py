@@ -7,7 +7,7 @@ Includes environmental screening via Firecrawl + Gemini
 import asyncio
 import logging
 import traceback
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -26,6 +26,7 @@ class FreeTrialResponse(BaseModel):
     trial_id: str
     message: str
     status: str
+    analysis_data: Optional[Dict[str, Any]] = None  # NEW: Immediate analysis results
 
 
 async def handle_free_trial(request_data: FreeTrialRequest) -> FreeTrialResponse:
