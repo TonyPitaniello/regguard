@@ -220,9 +220,8 @@ export function PlatformDashboard() {
               <span className="text-yellow-400 text-2xl">★</span>
             </div>
             <p className="text-gray-300 text-lg italic mb-4">
-              "RegGuard's punch list saved us 2 weeks of research and helped us avoid a site with a pending moratorium. We would've wasted $50K+ on that project."
+              Real results from actual RegGuard users. See how contractors are reducing permit timelines and avoiding costly mistakes.
             </p>
-            <p className="text-white font-bold">— Regional Contractor, Texas</p>
           </div>
         </div>
       </section>
