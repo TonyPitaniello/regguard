@@ -14,6 +14,7 @@ import SignupPage from './pages/SignupPage';
 import PricingPage from './pages/PricingPage';
 import MethodologyPage from './pages/MethodologyPage';
 import FreeTrialPage from './pages/FreeTrialPage';
+import ResultsPage from './pages/ResultsPage';
 import SampleReportPage from './pages/SampleReportPage';
 import VoiceCommandSystem from './VoiceCommandSystem';
 import OnboardingSystem from './OnboardingSystem';
@@ -53,6 +54,7 @@ export function AppRouter() {
 
           {/* Free Trial */}
           <Route path="/free-trial" element={<FreeTrialPage />} />
+          <Route path="/results" element={<ResultsPage />} />
 
           {/* Sample Report */}
           <Route path="/sample-report" element={<SampleReportPage />} />

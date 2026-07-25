@@ -1278,6 +1278,80 @@ async def free_trial(request_body: FreeTrialRequest) -> FreeTrialResponse:
     return response
 
 
+# ========== Results Display Endpoint (Option A MVP) ==========
+
+@app.post("/results/display")
+async def display_results(analysis_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Option A MVP: Display comprehensive analysis results on frontend
+    
+    Takes full environmental + punch list analysis and formats for HTML display.
+    Used after free trial completion to show results before upgrade CTA.
+    
+    Args:
+        analysis_data: Full analysis dict from Option A screening
+        
+    Returns:
+        HTML formatted results ready for frontend display
+    """
+    try:
+        from option_a_integration import format_analysis_for_html
+        
+        logger.info(f"📊 Formatting analysis results for display")
+        
+        html = format_analysis_for_html(analysis_data)
+        
+        return {
+            "status": "success",
+            "html": html,
+            "analysis_data": analysis_data,  # Also return raw data for frontend state management
+        }
+    except Exception as e:
+        logger.error(f"❌ Failed to format results: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {
+            "status": "error",
+            "message": "Failed to format analysis results",
+        }
+
+
+@app.get("/results/sample")
+async def get_sample_report() -> Dict[str, Any]:
+    """
+    Return a sample/anonymized report showing what the full premium report looks like
+    Used as social proof on marketing pages
+    """
+    try:
+        from option_a_integration import run_option_a_analysis
+        
+        logger.info(f"📋 Generating sample report")
+        
+        # Run analysis on a well-known location (Plano, TX datacenter area)
+        analysis = await run_option_a_analysis(
+            address="1601 Vontress Street, Plano, Texas",
+            city="Plano",
+            state="TX",
+            zip_code="75074",
+            latitude=33.1960,
+            longitude=-96.8103,
+            project_type="data-center",
+        )
+        
+        return {
+            "status": "success",
+            "sample_report": analysis,
+        }
+    except Exception as e:
+        logger.error(f"❌ Failed to generate sample: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {
+            "status": "error",
+            "message": "Failed to generate sample report",
+        }
+
+
 # ========== Jurisdiction Cache Endpoints ==========
 
 @app.get("/cache/jurisdiction/{zip_code}")
