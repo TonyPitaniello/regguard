@@ -1,0 +1,318 @@
+"""
+Option A MVP Integration: Real Environmental Screening + Punch List Generation
+Integrates real_environmental_screening.py and punch_list_generator.py
+into the free trial pipeline
+"""
+
+import asyncio
+import logging
+from typing import Optional, Dict, Any
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+async def run_option_a_analysis(
+    address: str,
+    city: str,
+    state: str,
+    zip_code: str,
+    latitude: float,
+    longitude: float,
+    project_type: str = "data-center",
+    utilities_involved: Optional[list] = None,
+) -> Dict[str, Any]:
+    """
+    Run Option A MVP Analysis:
+    1. Real environmental screening
+    2. AI punch list generation
+    3. Combined results for display/email
+    
+    Returns comprehensive analysis that can be:
+    - Displayed on results page
+    - Sent via email
+    - Eventually converted to PDF (Option B)
+    """
+    
+    logger.info(f"🚀 Option A MVP Analysis: {project_type} in {city}, {state}")
+    
+    try:
+        # Step 1: Run real environmental screening
+        from real_environmental_screening import get_environmental_screening_engine
+        
+        env_engine = get_environmental_screening_engine()
+        environmental_data = await env_engine.screen_site(
+            address=address,
+            latitude=latitude,
+            longitude=longitude,
+            city=city,
+            state=state,
+            zip_code=zip_code,
+        )
+        
+        logger.info(f"✅ Environmental screening complete")
+        
+        # Step 2: Generate AI-driven punch list
+        from punch_list_generator import get_punch_list_generator
+        
+        punch_generator = get_punch_list_generator()
+        punch_list_data = punch_generator.generate_punch_list(
+            project_type=project_type,
+            location=f"{city}, {state}",
+            environmental_risks=environmental_data,
+            utilities_involved=utilities_involved or [],
+        )
+        
+        logger.info(f"✅ Punch list generated with {len(punch_list_data['punch_list'])} items")
+        
+        # Step 3: Combine for display/delivery
+        combined_analysis = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "project_info": {
+                "address": address,
+                "city": city,
+                "state": state,
+                "zip": zip_code,
+                "type": project_type,
+                "coordinates": {"latitude": latitude, "longitude": longitude},
+            },
+            "environmental_screening": environmental_data,
+            "punch_list": punch_list_data,
+            "summary": {
+                "total_environmental_risks": len(environmental_data["findings"]),
+                "high_risk_count": sum(1 for f in environmental_data["findings"] if f["risk_level"] in ["HIGH", "CRITICAL"]),
+                "total_punch_list_items": len(punch_list_data["punch_list"]),
+                "estimated_timeline": punch_list_data["timeline_summary"],
+                "estimated_total_cost": punch_list_data["estimated_total_cost"],
+            },
+            "next_steps": [
+                "1. Review environmental findings and associated action items",
+                "2. Contact your local Authority Having Jurisdiction (AHJ) with your punch list",
+                "3. For full analysis including professional PDFs and permit packages, upgrade to premium ($15,000)",
+                "Ready to upgrade? Click 'Upgrade to Full Report' to proceed to checkout.",
+            ]
+        }
+        
+        logger.info(f"✅ Option A analysis complete")
+        return combined_analysis
+        
+    except Exception as e:
+        logger.error(f"❌ Option A analysis failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
+
+
+def format_analysis_for_email(analysis: Dict[str, Any]) -> str:
+    """
+    Format Option A analysis for email delivery
+    Creates readable plaintext that can be sent immediately
+    """
+    
+    lines = [
+        "=" * 70,
+        "REGGUARD FREE TRIAL - SITE DILIGENCE ANALYSIS",
+        "=" * 70,
+        "",
+        f"Project Location: {analysis['project_info']['address']}",
+        f"City: {analysis['project_info']['city']}, {analysis['project_info']['state']} {analysis['project_info']['zip']}",
+        f"Project Type: {analysis['project_info']['type']}",
+        f"Analysis Date: {analysis['timestamp']}",
+        "",
+        "-" * 70,
+        "ENVIRONMENTAL SCREENING SUMMARY",
+        "-" * 70,
+        f"Overall Risk Level: {analysis['environmental_screening']['risk_level']}",
+        f"Total Issues Found: {analysis['summary']['total_environmental_risks']}",
+        f"High/Critical Risk Count: {analysis['summary']['high_risk_count']}",
+        "",
+    ]
+    
+    # Add environmental findings
+    for finding in analysis['environmental_screening']['findings']:
+        lines.extend([
+            f"📌 {finding['category'].upper()}",
+            f"   Risk Level: {finding['risk_level']}",
+            f"   Description: {finding['description']}",
+            f"   Research Cost: ${finding['research_cost_usd']}",
+            "",
+        ])
+    
+    # Add punch list summary
+    lines.extend([
+        "-" * 70,
+        "YOUR ACTION PLAN (PUNCH LIST)",
+        "-" * 70,
+        f"Total Action Items: {analysis['summary']['total_punch_list_items']}",
+        f"Estimated Timeline: {analysis['summary']['estimated_timeline']}",
+        f"Estimated Total Cost: ${analysis['summary']['estimated_total_cost']:,.0f}",
+        "",
+        "TOP PRIORITY ITEMS:",
+        "",
+    ])
+    
+    # Add top 5 critical path items
+    for i, task in enumerate(analysis['punch_list']['critical_path'][:5], 1):
+        lines.append(f"{i}. {task}")
+    
+    lines.extend([
+        "",
+        "FULL PUNCH LIST:",
+        "See attached PDF or log into your account for complete details.",
+        "",
+        "-" * 70,
+        "NEXT STEPS",
+        "-" * 70,
+    ])
+    
+    for step in analysis['next_steps']:
+        lines.append(step)
+    
+    lines.extend([
+        "",
+        "Need the full professional report?",
+        "Our premium package ($15,000) includes:",
+        "✓ Professional punch list with vendor contacts",
+        "✓ Permit application packages ready to file",
+        "✓ Timeline predictions by utility",
+        "✓ Same-day delivery",
+        "",
+        "Ready to upgrade? Reply to this email or visit regguard.com",
+        "",
+        "=" * 70,
+        f"Generated by RegGuard {datetime.utcnow().strftime('%Y-%m-%d')}",
+        "=" * 70,
+    ])
+    
+    return "\n".join(lines)
+
+
+def format_analysis_for_html(analysis: Dict[str, Any]) -> str:
+    """
+    Format Option A analysis for HTML display on results page
+    """
+    
+    html = f"""
+    <div class="analysis-results">
+        <header class="results-header">
+            <h1>Site Diligence Analysis Complete</h1>
+            <p class="subtitle">{analysis['project_info']['address']}</p>
+        </header>
+        
+        <section class="risk-summary">
+            <h2>Environmental Risk Summary</h2>
+            <div class="risk-level {analysis['environmental_screening']['risk_level'].lower()}">
+                <strong>Overall Risk: {analysis['environmental_screening']['risk_level']}</strong>
+            </div>
+            <p>Found {analysis['summary']['high_risk_count']} high/critical risk items requiring immediate attention</p>
+        </section>
+        
+        <section class="environmental-findings">
+            <h2>Environmental Findings</h2>
+            <div class="findings-list">
+    """
+    
+    for finding in analysis['environmental_screening']['findings']:
+        html += f"""
+                <div class="finding-item {finding['risk_level'].lower()}">
+                    <h3>{finding['category'].title()}</h3>
+                    <p class="risk-badge">{finding['risk_level']} Risk</p>
+                    <p class="description">{finding['description']}</p>
+                    <div class="action-items">
+                        <strong>Action Items:</strong>
+                        <ul>
+        """
+        for action in finding['action_items']:
+            html += f"<li>{action}</li>"
+        
+        html += f"""
+                        </ul>
+                    </div>
+                    <p class="research-cost">Research Cost: ${finding['research_cost_usd']}</p>
+                </div>
+        """
+    
+    html += """
+            </div>
+        </section>
+        
+        <section class="punch-list-preview">
+            <h2>Your Action Plan</h2>
+            <p>Total Action Items: {count}</p>
+            <p>Estimated Timeline: {timeline}</p>
+            <p>Estimated Cost: ${cost:,.0f}</p>
+            <div class="critical-path">
+                <h3>Critical Path (Top Priority):</h3>
+                <ol>
+    """.format(
+        count=analysis['summary']['total_punch_list_items'],
+        timeline=analysis['summary']['estimated_timeline'],
+        cost=analysis['summary']['estimated_total_cost'],
+    )
+    
+    for task in analysis['punch_list']['critical_path'][:5]:
+        html += f"<li>{task}</li>"
+    
+    html += """
+                </ol>
+            </div>
+        </section>
+        
+        <section class="upgrade-cta">
+            <h2>Ready for the Full Report?</h2>
+            <p>This free analysis gives you key environmental findings and critical action items.</p>
+            <p>Our <strong>premium package ($15,000)</strong> includes:</p>
+            <ul>
+                <li>Professional punch list with contractor contacts</li>
+                <li>State-specific permit application packages</li>
+                <li>Utility interconnection timelines</li>
+                <li>Same-day PDF delivery</li>
+            </ul>
+            <button class="upgrade-button">Upgrade to Full Report ($15,000)</button>
+        </section>
+    </div>
+    """
+    
+    return html
+
+
+# Placeholder for integration into free_trial_handler.py
+def integrate_option_a_into_free_trial():
+    """
+    Integration instructions:
+    
+    1. In free_trial_handler.py, replace _run_environmental_screening with:
+    
+    async def _run_environmental_screening(address, project_type):
+        from option_a_integration import run_option_a_analysis
+        from jurisdiction import geocode_profile_from_address
+        
+        profile = geocode_profile_from_address(address)
+        if not profile:
+            return None
+            
+        analysis = await run_option_a_analysis(
+            address=address,
+            city=profile.city,
+            state=profile.state_short,
+            zip_code=profile.zip5,
+            latitude=profile.latitude,
+            longitude=profile.longitude,
+            project_type=project_type,
+        )
+        return analysis
+    
+    2. In free_trial_handler.py, update _combine_memo_with_environmental to format 
+       the analysis for email using format_analysis_for_email()
+    
+    3. Create new /results endpoint to display analysis:
+    
+    @app.post("/results")
+    async def display_results(analysis_data: dict):
+        html = format_analysis_for_html(analysis_data)
+        return {"html": html}
+    
+    4. Frontend: After free trial submission, display results using
+       format_analysis_for_html() output
+    """
+    pass
