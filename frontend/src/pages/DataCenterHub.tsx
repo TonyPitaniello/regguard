@@ -139,7 +139,15 @@ export function DataCenterHub() {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
               <button
-                onClick={() => { window.location.href = '/free-trial'; }}
+                onClick={() => {
+                  // Scroll to free trial form
+                  const element = document.getElementById('free-trial-form');
+                  if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  } else {
+                    window.location.href = '/free-trial';
+                  }
+                }}
                 className="px-8 py-3 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
               >
                 Start Free Trial <ArrowRight className="w-4 h-4" />

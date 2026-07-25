@@ -113,7 +113,7 @@ export default function FreeTrialPage() {
       </section>
 
       {/* Form Section */}
-      <section className="px-4 py-16 sm:px-6 lg:px-8">
+      <section id="free-trial-form" className="px-4 py-16 sm:px-6 lg:px-8">
         <div className="max-w-2xl mx-auto">
           {submitted ? (
             <div className="bg-gradient-to-br from-emerald-600/20 to-green-600/20 border-2 border-emerald-500/30 rounded-2xl p-12 text-center">
