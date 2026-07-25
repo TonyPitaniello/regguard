@@ -313,152 +313,68 @@ Ready? Upgrade now to get your complete analysis.
 
 async def _run_environmental_screening(address: str, project_type: str) -> Optional[dict]:
     """
-    Run environmental screening using Firecrawl + Gemini
-    **FREE TIER USES CACHED DATA ONLY** (99% cost reduction)
-    Firecrawl only called on premium tier
-    Returns environmental assessment or None if failed
+    Option A MVP: Run real environmental screening + punch list generation
+    Integrates real Firecrawl API for actual data (replaces template/cached data)
+    Returns comprehensive environmental + punch list analysis for display/email
     """
     import traceback
     try:
         from jurisdiction import geocode_profile_from_address
+        from option_a_integration import run_option_a_analysis
         import os
 
-        logger.info(f"🌍 Environmental screening starting for: {address}")
+        logger.info(f"🌍 Option A: Starting real environmental screening for: {address}")
         
         # Geocode to get lat/lon
         profile = geocode_profile_from_address(address)
 
         if not profile:
-            logger.warning(f"❌ Could not geocode {address} for environmental screening")
+            logger.warning(f"❌ Could not geocode {address}")
             return None
 
-        # JurisdictionProfile is a dataclass with attributes: zip5, city, state_short, etc.
-        zip_code = profile.zip5
-        city = profile.city
-        state = profile.state_short
+        logger.info(f"📍 Geocoded: {profile.city}, {profile.state_short} ZIP: {profile.zip5}")
 
-        logger.info(f"📍 Geocoded: {city}, {state} ZIP: {zip_code}")
-
-        # **FREE TIER: USE CACHED DATA ONLY (no Firecrawl API calls)**
-        # This dramatically reduces costs to essentially $0 (just database lookups)
-        logger.info(f"🔍 Looking up cached environmental data for {zip_code}, {state}...")
-        cached_result = _get_cached_environmental_data(zip_code, state)
+        # Run Option A analysis (real environmental screening + punch list)
+        analysis = await run_option_a_analysis(
+            address=address,
+            city=profile.city,
+            state=profile.state_short,
+            zip_code=profile.zip5,
+            latitude=profile.latitude,
+            longitude=profile.longitude,
+            project_type=project_type,
+            utilities_involved=[],  # Would be populated in premium tier
+        )
         
-        if cached_result:
-            logger.info(f"✅ Using cached environmental data for {zip_code}, {state} (FREE TIER - $0 Firecrawl cost)")
-            return cached_result
-        
-        # No cached data available, return basic disclaimer
-        logger.info(f"⚠️  No cached environmental data for {zip_code}, {state}. Returning basic template.")
-        return {
-            "risk_level": "UNKNOWN",
-            "synthesis": f"Environmental screening data for {zip_code}, {state} is not yet cached. This feature will be available on the premium tier.",
-            "screening_data": {},
-            "note": "Free tier: limited to cached data. Upgrade to premium for real-time Firecrawl analysis."
-        }
+        logger.info(f"✅ Option A analysis complete: {analysis['summary']['total_environmental_risks']} risks found")
+        return analysis
 
     except Exception as e:
-        logger.error(f"❌ Environmental screening failed: {e}")
+        logger.error(f"❌ Option A analysis failed: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return None
 
 
-def _get_cached_environmental_data(zip_code: str, state: str) -> Optional[dict]:
+def _combine_memo_with_environmental(research_memo: str, analysis_data: Optional[dict]) -> str:
     """
-    Retrieve cached environmental data for a ZIP/state combination
-    This completely bypasses Firecrawl API calls for free tier
-    Cost: $0 (just database lookup)
+    Option A MVP: Combine research memo with Option A analysis results
+    Formats environmental + punch list for email delivery
     """
-    import httpx
-    import os
-    
-    try:
-        url = os.getenv("SUPABASE_URL")
-        key = os.getenv("SUPABASE_KEY")
-        
-        if not url or not key:
-            logger.warning(f"⚠️  Cache lookup: Missing SUPABASE credentials")
-            return None
-        
-        logger.info(f"🔍 Cache lookup for ZIP: {zip_code}, State: {state}")
-        
-        # Query environmental_cache table by ZIP + state
-        supabase_api_url = f"{url}/rest/v1/environmental_cache?zip_code=eq.{zip_code}&state=eq.{state}"
-        headers = {
-            "apikey": key,
-            "Accept": "application/json",
-        }
-        
-        with httpx.Client() as client:
-            response = client.get(supabase_api_url, headers=headers, timeout=5.0)
-            logger.info(f"📡 Cache API response: {response.status_code}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                logger.info(f"📦 Cache query returned {len(data)} rows")
-                if data and len(data) > 0:
-                    logger.info(f"✅ Found cached environmental data: {zip_code}, {state}")
-                    return data[0].get("cached_data")
-                else:
-                    logger.info(f"❌ No cache entry for {zip_code}, {state}")
-            else:
-                logger.warning(f"⚠️  Cache API error: {response.status_code} - {response.text}")
-        
-        return None
-    except Exception as e:
-        logger.warning(f"⚠️  Cache lookup exception: {e}")
-        return None
-
-
-def _combine_memo_with_environmental(research_memo: str, environmental_data: Optional[dict]) -> str:
-    """
-    Combine research memo with environmental screening summary.
-    If no real data, skip environmental section entirely.
-    """
-    if not environmental_data or environmental_data.get("error"):
+    if not analysis_data or analysis_data.get("error"):
         return research_memo
 
     try:
-        risk_level = environmental_data.get("risk_level", "").strip()
-        screening_data = environmental_data.get("screening_data", {})
+        from option_a_integration import format_analysis_for_email
         
-        # Check if we have any actual data (not just "UNKNOWN")
-        has_data = False
-        env_findings = []
+        logger.info(f"📧 Formatting Option A analysis for email")
+        # Format the full analysis for email
+        formatted_email = format_analysis_for_email(analysis_data)
         
-        if risk_level and risk_level.upper() != "UNKNOWN":
-            has_data = True
-        
-        # Check each screening area for actual findings
-        wetlands = screening_data.get("wetlands", {})
-        if wetlands.get("risk_level") and wetlands.get("risk_level").upper() != "UNKNOWN":
-            has_data = True
-            env_findings.append(f"🌿 Wetlands: {wetlands.get('summary', 'Risk present')}")
-        
-        species = screening_data.get("endangered_species", {})
-        if species.get("risk_level") and species.get("risk_level").upper() != "UNKNOWN":
-            has_data = True
-            env_findings.append(f"🦅 Endangered Species: {species.get('summary', 'Risk present')}")
-        
-        flood = screening_data.get("flood_zones", {})
-        if flood.get("risk_level") and flood.get("risk_level").upper() != "UNKNOWN":
-            has_data = True
-            env_findings.append(f"🌊 Flood Zones: {flood.get('summary', 'Risk present')}")
-        
-        noise = screening_data.get("noise_zones", {})
-        if noise.get("risk_level") and noise.get("risk_level").upper() != "UNKNOWN":
-            has_data = True
-            env_findings.append(f"📢 Noise Ordinances: {noise.get('summary', 'Risk present')}")
-        
-        nepa = screening_data.get("nepa", {})
-        if nepa.get("risk_level") and nepa.get("risk_level").upper() != "UNKNOWN":
-            has_data = True
-            env_findings.append(f"📋 NEPA: {nepa.get('summary', 'Risk present')}")
-        
-        state = screening_data.get("state_requirements", {})
-        if state.get("risk_level") and state.get("risk_level").upper() != "UNKNOWN":
-            has_data = True
-            env_findings.append(f"📜 State Requirements: {state.get('summary', 'Risk present')}")
+        return formatted_email
+
+    except Exception as e:
+        logger.error(f"❌ Failed to format analysis for email: {e}")
+        return research_memo
         
         # If no actual data, don't append environmental section
         if not has_data:
