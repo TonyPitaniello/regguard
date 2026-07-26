@@ -1,0 +1,61 @@
+services:
+  - type: web
+    name: regguard-backend
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:$PORT --timeout 300 --access-logfile -
+    autoDeploy: false
+    envVars:
+      # Database Configuration
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+
+      # Stripe Configuration
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+
+      # API Keys
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+
+      # Application URLs
+      - key: BACKEND_URL
+        value: https://regguard-backend.onrender.com
+      - key: FRONTEND_URL
+        value: https://regguard.vercel.app
+      - key: FRONTEND_APP_URL
+        value: https://regguard.vercel.app
+
+      # Email Service
+      - key: RESEND_FROM_EMAIL
+        value: noreply@regguardagent.com
+
+      # Environment Settings
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: info
+
+      # Error Tracking (Optional)
+      - key: SENTRY_DSN
+        sync: false
+
+    routes:
+      - path: /
+        matchType: prefix
+
+    preDeployCommand: echo "Backend deployment pre-check"
