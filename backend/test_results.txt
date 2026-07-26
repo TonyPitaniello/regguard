@@ -1,0 +1,14 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.10.20, pytest-7.4.3, pluggy-1.6.0 -- /Users/tony_pitaniello/Desktop/reg-guard FINAL/backend/venv/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /Users/tony_pitaniello/Desktop/reg-guard FINAL/backend
+plugins: cov-4.1.0, asyncio-0.21.1, mock-3.12.0, anyio-3.7.1, xdist-3.5.0
+asyncio: mode=auto
+collecting ... collected 105 items
+
+tests/test_core_research.py::TestZIPLookup::test_valid_texas_zip_lookup FAILED [  0%]
+tests/test_core_research.py::TestZIPLookup::test_valid_california_zip_lookup FAILED [  1%]
+tests/test_core_research.py::TestZIPLookup::test_jurisdiction_resolution_from_zip PASSED [  2%]
+tests/test_core_research.py::TestZIPLookup::test_multiple_zip_lookups_consistency PASSED [  3%]
+tests/test_core_research.py::TestCostEstimates::test_cost_estimate_generation PASSED [  4%]
+tests/test_core_research.py::TestCostEstimates::test_texas_solar_permit_cost_realistic 
