@@ -10,6 +10,7 @@ import SendResultsForm, { ResultsSummaryPayload } from './SendResultsForm';
 export interface AnalysisData {
   timestamp: string;
   research_id?: string;
+  preview?: boolean;
   project_info: {
     address: string;
     city: string;

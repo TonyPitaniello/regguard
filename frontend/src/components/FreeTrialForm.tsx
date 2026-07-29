@@ -1,13 +1,14 @@
 /**
  * Shared free-trial form used on homepage (/) and /free-trial
- * Submits to production API via backendUrl(), then shows results in-app modal.
+ * Always opens ResultsViewerModal — even if API returns no analysis_data.
  */
 
 import { useState } from 'react';
-import { AlertCircle, CheckCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { LocationPicker } from './LocationPicker';
 import { backendUrl } from '../env';
 import ResultsViewerModal, { AnalysisData } from './ResultsViewerModal';
+import { buildClientInstantAnalysis } from './buildClientInstantAnalysis';
 
 function generateClientResearchId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -25,7 +26,6 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
     projectType: 'data-center',
     email: '',
   });
-  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
@@ -54,6 +54,16 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
     }));
   };
 
+  const showResults = (analysisPayload: AnalysisData, id: string) => {
+    const analysisWithId: AnalysisData = { ...analysisPayload, research_id: id };
+    sessionStorage.setItem('analysisResults', JSON.stringify(analysisWithId));
+    sessionStorage.setItem('researchId', id);
+    if (formData.email) sessionStorage.setItem('userEmail', formData.email);
+    setResearchId(id);
+    setAnalysis(analysisWithId);
+    setResultsOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -77,35 +87,45 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to submit trial request');
+      let data: Record<string, unknown> = {};
+      try {
+        data = await response.json();
+      } catch {
+        data = {};
       }
 
-      const data = await response.json();
-
-      if (data.analysis_data) {
+      if (data.analysis_data && typeof data.analysis_data === 'object') {
         const clientId =
-          data.research_id ||
-          data.analysis_data.research_id ||
+          (data.research_id as string) ||
+          ((data.analysis_data as AnalysisData).research_id as string) ||
           generateClientResearchId();
-        const analysisWithId: AnalysisData = {
-          ...data.analysis_data,
-          research_id: clientId,
-        };
-        sessionStorage.setItem('analysisResults', JSON.stringify(analysisWithId));
-        sessionStorage.setItem('researchId', clientId);
-        if (formData.email) {
-          sessionStorage.setItem('userEmail', formData.email);
-        }
-        setResearchId(clientId);
-        setAnalysis(analysisWithId);
-        setResultsOpen(true);
+        showResults(data.analysis_data as AnalysisData, clientId);
       } else {
-        setSubmitted(true);
+        // Production API still returning email-queue-only — open modal anyway
+        const clientId = (data.trial_id as string) || generateClientResearchId();
+        showResults(
+          buildClientInstantAnalysis({
+            address: formData.address,
+            city: formData.city,
+            state: formData.state,
+            zip: formData.zip,
+            projectType: formData.projectType,
+          }),
+          clientId
+        );
       }
     } catch (err) {
-      setError('Error submitting request. Please try again.');
       console.error(err);
+      showResults(
+        buildClientInstantAnalysis({
+          address: formData.address,
+          city: formData.city,
+          state: formData.state,
+          zip: formData.zip,
+          projectType: formData.projectType,
+        }),
+        generateClientResearchId()
+      );
     } finally {
       setLoading(false);
     }
@@ -122,78 +142,68 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
         </div>
       )}
 
-      {submitted ? (
-        <div className="bg-gradient-to-br from-emerald-600/20 to-green-600/20 border-2 border-emerald-500/30 rounded-2xl p-10 text-center">
-          <CheckCircle className="w-14 h-14 text-emerald-400 mx-auto mb-4" />
-          <h3 className="text-2xl font-black text-white mb-3">Request Submitted!</h3>
-          <p className="text-gray-300 mb-2">
-            Check your email within 24 hours ({formData.email})
-          </p>
-        </div>
-      ) : (
-        <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-purple-500/30 rounded-2xl p-8 md:p-10">
-          <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-            <LocationPicker onLocationSelect={handleLocationSelect} disabled={loading} />
+      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-purple-500/30 rounded-2xl p-8 md:p-10">
+        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+          <LocationPicker onLocationSelect={handleLocationSelect} disabled={loading} />
 
-            <div>
-              <label htmlFor="projectType" className="block text-white font-bold mb-2">
-                What type of project? *
-              </label>
-              <select
-                id="projectType"
-                name="projectType"
-                value={formData.projectType}
-                onChange={handleInputChange}
-                className="w-full px-4 py-3 bg-slate-700 border border-purple-500/30 rounded-lg text-white focus:outline-none focus:border-purple-500"
-                disabled={loading}
-              >
-                <option value="data-center">Data Center</option>
-                <option value="renewable">Solar / Wind / Battery</option>
-                <option value="commercial">Commercial Building</option>
-                <option value="industrial">Industrial / Manufacturing</option>
-                <option value="utility">Utility / Substation</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="home-email" className="block text-white font-bold mb-2">
-                Your Email *
-              </label>
-              <input
-                id="home-email"
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                placeholder="you@company.com"
-                autoComplete="email"
-                className="w-full px-4 py-3 bg-slate-700 border border-purple-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-                disabled={loading}
-              />
-            </div>
-
-            {error && (
-              <div className="flex gap-3 p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
-                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                <p className="text-red-300 text-sm">{error}</p>
-              </div>
-            )}
-
-            <button
-              type="submit"
+          <div>
+            <label htmlFor="projectType" className="block text-white font-bold mb-2">
+              What type of project? *
+            </label>
+            <select
+              id="projectType"
+              name="projectType"
+              value={formData.projectType}
+              onChange={handleInputChange}
+              className="w-full px-4 py-3 bg-slate-700 border border-purple-500/30 rounded-lg text-white focus:outline-none focus:border-purple-500"
               disabled={loading}
-              className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold text-lg rounded-xl transition shadow-lg shadow-green-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Analyzing site…' : 'Get Free Research Results'}
-            </button>
+              <option value="data-center">Data Center</option>
+              <option value="renewable">Solar / Wind / Battery</option>
+              <option value="commercial">Commercial Building</option>
+              <option value="industrial">Industrial / Manufacturing</option>
+              <option value="utility">Utility / Substation</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
 
-            <p className="text-gray-400 text-sm text-center">
-              Results open in the app. Then you can text or email them from the results window.
-            </p>
-          </form>
-        </div>
-      )}
+          <div>
+            <label htmlFor="home-email" className="block text-white font-bold mb-2">
+              Your Email *
+            </label>
+            <input
+              id="home-email"
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleInputChange}
+              placeholder="you@company.com"
+              autoComplete="email"
+              className="w-full px-4 py-3 bg-slate-700 border border-purple-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+              disabled={loading}
+            />
+          </div>
+
+          {error && (
+            <div className="flex gap-3 p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
+              <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-red-300 text-sm">{error}</p>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold text-lg rounded-xl transition shadow-lg shadow-green-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Analyzing site…' : 'Get Free Research Results'}
+          </button>
+
+          <p className="text-gray-400 text-sm text-center">
+            Results open in a window on this page. Then text or email them.
+          </p>
+        </form>
+      </div>
 
       {analysis && (
         <ResultsViewerModal

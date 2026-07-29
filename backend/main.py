@@ -1287,54 +1287,35 @@ async def test_supabase() -> Dict[str, Any]:
 @app.post("/free-trial")
 async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
     """
-    Handle free trial request.
-    
-    Accepts site address, generates research memo, emails to user.
-    Runs environmental analysis synchronously (for immediate display)
-    and email in background.
-    
-    **No credit card required**
-    
-    Args:
-        address: Site address (e.g., "123 Main St, Austin, TX")
-        project_type: Type of project (data-center, solar, commercial, industrial, utility)
-        email: Customer email for research memo delivery
-    
-    Returns:
-        trial_id: Unique trial ID for tracking
-        status: "success" or "error"
-        message: Human-readable status message
-        analysis_data: IMMEDIATE analysis results (environmental + punch list)
-    
-    **Response time:** 30-60 seconds (includes analysis generation)
-    **Research delivery:** Email sent within 24 hours
-    **Cost:** Free (memo only; upgrade to $15K for PDFs)
+    Free trial: create trial record, return IMMEDIATE analysis for in-app modal,
+    and queue email in background.
     """
     from free_trial_handler import handle_free_trial
     from option_a_integration import run_option_a_analysis
+    from instant_analysis import build_instant_fallback_analysis
     from jurisdiction import geocode_profile_from_address
-    
+
+    trial_id = ""
+    status = "success"
+    message = "Analysis ready — results are displayed in the app."
+
+    # Step 1: Best-effort trial record + background email (never block results)
     try:
-        # Step 1: Handle trial creation (background email)
         response = await handle_free_trial(request_body)
-        
-        # Step 2: Generate analysis immediately for frontend display
-        logger.info(f"🚀 Generating Option A analysis for immediate display...")
-        
-        try:
-            # Geocode address
-            profile = geocode_profile_from_address(request_body.address)
-            
-            if not profile:
-                logger.warning(f"Could not geocode {request_body.address}")
-                return {
-                    "trial_id": response.trial_id,
-                    "status": response.status,
-                    "message": response.message,
-                    "analysis_data": None,
-                }
-            
-            # Run Option A analysis
+        trial_id = response.trial_id or ""
+        if response.status == "error" and not trial_id:
+            logger.warning(f"Trial record issue: {response.message}")
+        else:
+            message = response.message or message
+            status = response.status or status
+    except Exception as trial_err:
+        logger.error(f"handle_free_trial failed (continuing with analysis): {trial_err}")
+
+    # Step 2: Always produce analysis_data for the in-app modal
+    analysis: Optional[Dict[str, Any]] = None
+    try:
+        profile = geocode_profile_from_address(request_body.address)
+        if profile:
             analysis = await run_option_a_analysis(
                 address=request_body.address,
                 city=profile.city,
@@ -1344,41 +1325,29 @@ async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
                 longitude=profile.longitude,
                 project_type=request_body.project_type,
             )
-            
-            logger.info(f"✅ Analysis generated successfully for display")
-            
-            return {
-                "trial_id": response.trial_id,
-                "status": response.status,
-                "message": response.message,
-                "analysis_data": analysis,  # NEW: Return analysis immediately
-            }
-        except Exception as analysis_error:
-            logger.error(f"⚠️  Could not generate immediate analysis: {analysis_error}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            
-            # Fallback: Return trial without analysis (email will still be sent)
-            return {
-                "trial_id": response.trial_id,
-                "status": response.status,
-                "message": response.message,
-                "analysis_data": None,  # Analysis will arrive via email
-            }
-        
-    except Exception as e:
-        logger.error(f"❌ Error in free trial endpoint: {e}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        return {
-            "trial_id": "",
-            "status": "error",
-            "message": "Failed to process free trial request. Please try again.",
-            "analysis_data": None,
-        }
-    finally:
-        logger.info(
-            f"Free trial request processed: {request_body.email} / "
-            f"{request_body.address[:50]} / Status: {response.status if 'response' in locals() else 'unknown'}"
+            message = "Analysis ready — results are displayed in the app."
+            status = "success"
+    except Exception as analysis_error:
+        logger.error(f"Deep analysis failed, using instant fallback: {analysis_error}")
+        logger.error(traceback.format_exc())
+
+    if not analysis:
+        zip_hint = getattr(request_body, "zip", None) or ""
+        analysis = build_instant_fallback_analysis(
+            address=request_body.address,
+            project_type=request_body.project_type,
+            zip_code=zip_hint if isinstance(zip_hint, str) else "",
         )
+        message = "Instant preview ready in the app. Deeper research continues in the background."
+        status = "success"
+
+    return {
+        "trial_id": trial_id,
+        "status": status,
+        "message": message,
+        "analysis_data": analysis,
+        "research_id": trial_id or analysis.get("timestamp", "preview"),
+    }
 
 
 # ========== Results Display Endpoint (Option A MVP) ==========
