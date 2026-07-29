@@ -1,18 +1,20 @@
 /**
  * ShareResultsModal.tsx
- * Modal for sharing research results via SMS or email
- * Includes validation, loading states, and notifications
+ * Modal for sharing research results via SMS or email.
+ * Supports optional summary payload for free-trial results without a DB record.
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Phone, Mail, AlertCircle, CheckCircle, Loader } from 'lucide-react';
+import { X, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import { backendUrl } from '../env';
+import type { ResultsSummaryPayload } from './SendResultsForm';
 
 interface ShareResultsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  deliveryMethod: 'sms' | 'email'; // 'sms' or 'email'
-  researchId: string;
+  deliveryMethod: 'sms' | 'email';
+  researchId?: string | null;
+  summary?: ResultsSummaryPayload;
   onSuccess?: (result: { status: string; phone?: string; email?: string }) => void;
 }
 
@@ -27,6 +29,7 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
   onClose,
   deliveryMethod,
   researchId,
+  summary,
   onSuccess,
 }) => {
   const [phone, setPhone] = useState('');
@@ -49,9 +52,7 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
   }, [isOpen]);
 
   const validatePhone = (value: string): boolean => {
-    // Remove non-digits
     const digits = value.replace(/\D/g, '');
-    // Check if it's 10 or 11 digits
     return digits.length === 10 || digits.length === 11;
   };
 
@@ -60,37 +61,17 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
     return pattern.test(value);
   };
 
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setPhone(value);
-
-    // Real-time validation
-    if (value && !validatePhone(value)) {
-      setErrors({ ...errors, phone: 'Please enter a valid US phone number (10 digits)' });
-    } else {
-      setErrors({ ...errors, phone: undefined });
-    }
-  };
-
-  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setEmail(value);
-
-    // Real-time validation
-    if (value && !validateEmail(value)) {
-      setErrors({ ...errors, email: 'Please enter a valid email address' });
-    } else {
-      setErrors({ ...errors, email: undefined });
-    }
-  };
+  const buildBody = (extra: Record<string, string>) => ({
+    ...extra,
+    ...(summary ? { summary } : {}),
+    ...(researchId ? { research_id: researchId } : {}),
+  });
 
   const handleSendSMS = async () => {
-    // Final validation
     if (!phone) {
       setErrors({ phone: 'Phone number is required' });
       return;
     }
-
     if (!validatePhone(phone)) {
       setErrors({ phone: 'Please enter a valid US phone number (10 digits)' });
       return;
@@ -100,23 +81,21 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
     setErrors({});
 
     try {
-      const response = await fetch(backendUrl(`/research/${researchId}/send-sms`), {
+      const path = researchId
+        ? `/research/${researchId}/send-sms`
+        : '/research/send-sms';
+      const response = await fetch(backendUrl(path), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ phone_number: phone }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildBody({ phone_number: phone })),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        // Check for rate limit error
         if (response.status === 400 && data.detail?.includes('Try again in')) {
           const match = data.detail.match(/Try again in (\d+) minutes/);
-          if (match) {
-            setRateLimitWait(parseInt(match[1]));
-          }
+          if (match) setRateLimitWait(parseInt(match[1]));
           setErrors({ general: data.detail });
         } else {
           setErrors({ general: data.detail || 'Failed to send SMS' });
@@ -124,25 +103,14 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
         return;
       }
 
-      // Format phone for display
       const displayPhone = phone.replace(/\D/g, '');
       const formattedPhone = `+1-${displayPhone.slice(-10, -7)}-${displayPhone.slice(-7, -4)}-${displayPhone.slice(-4)}`;
 
       setSuccess(true);
-      setSuccessMessage(`✅ Sent to ${formattedPhone}`);
+      setSuccessMessage(`Sent to ${formattedPhone}`);
       setPhone('');
-
-      if (onSuccess) {
-        onSuccess({
-          status: 'sent',
-          phone: data.phone,
-        });
-      }
-
-      // Auto-close after 3 seconds
-      setTimeout(() => {
-        onClose();
-      }, 3000);
+      onSuccess?.({ status: 'sent', phone: data.phone });
+      setTimeout(() => onClose(), 3000);
     } catch (error) {
       setErrors({ general: 'Network error. Please try again.' });
       console.error('Error sending SMS:', error);
@@ -152,12 +120,10 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
   };
 
   const handleSendEmail = async () => {
-    // Final validation
     if (!email) {
       setErrors({ email: 'Email is required' });
       return;
     }
-
     if (!validateEmail(email)) {
       setErrors({ email: 'Please enter a valid email address' });
       return;
@@ -167,23 +133,21 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
     setErrors({});
 
     try {
-      const response = await fetch(backendUrl(`/research/${researchId}/send-email`), {
+      const path = researchId
+        ? `/research/${researchId}/send-email`
+        : '/research/send-email';
+      const response = await fetch(backendUrl(path), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email_address: email }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildBody({ email_address: email, email })),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        // Check for rate limit error
         if (response.status === 400 && data.detail?.includes('Try again in')) {
           const match = data.detail.match(/Try again in (\d+) minutes/);
-          if (match) {
-            setRateLimitWait(parseInt(match[1]));
-          }
+          if (match) setRateLimitWait(parseInt(match[1]));
           setErrors({ general: data.detail });
         } else {
           setErrors({ general: data.detail || 'Failed to send email' });
@@ -192,20 +156,10 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
       }
 
       setSuccess(true);
-      setSuccessMessage(`✅ Sent to ${email}`);
+      setSuccessMessage(`Sent to ${email}`);
       setEmail('');
-
-      if (onSuccess) {
-        onSuccess({
-          status: 'sent',
-          email: data.email,
-        });
-      }
-
-      // Auto-close after 3 seconds
-      setTimeout(() => {
-        onClose();
-      }, 3000);
+      onSuccess?.({ status: 'sent', email: data.email });
+      setTimeout(() => onClose(), 3000);
     } catch (error) {
       setErrors({ general: 'Network error. Please try again.' });
       console.error('Error sending email:', error);
@@ -219,34 +173,28 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-xl font-bold text-gray-900">
-            {deliveryMethod === 'sms' ? '📱 Send via Text' : '📧 Send via Email'}
+            {deliveryMethod === 'sms' ? 'Send via Text' : 'Send via Email'}
           </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition"
-            aria-label="Close"
-          >
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition" aria-label="Close">
             <X size={24} />
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6">
-          {/* Success State */}
           {success && (
             <div className="flex items-center gap-3 p-4 bg-green-50 rounded-lg border border-green-200 mb-4">
               <CheckCircle size={20} className="text-green-600" />
               <div>
                 <p className="text-sm font-medium text-green-900">{successMessage}</p>
-                <p className="text-xs text-green-700 mt-1">Check your {deliveryMethod === 'sms' ? 'phone' : 'inbox'}</p>
+                <p className="text-xs text-green-700 mt-1">
+                  Check your {deliveryMethod === 'sms' ? 'phone' : 'inbox'}
+                </p>
               </div>
             </div>
           )}
 
-          {/* Error State */}
           {errors.general && (
             <div className="flex items-start gap-3 p-4 bg-red-50 rounded-lg border border-red-200 mb-4">
               <AlertCircle size={20} className="text-red-600 mt-0.5 flex-shrink-0" />
@@ -261,7 +209,6 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
             </div>
           )}
 
-          {/* SMS Input */}
           {deliveryMethod === 'sms' && (
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
@@ -272,7 +219,14 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
                 type="tel"
                 placeholder="+1 (555) 123-4567 or 5551234567"
                 value={phone}
-                onChange={handlePhoneChange}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  if (e.target.value && !validatePhone(e.target.value)) {
+                    setErrors({ ...errors, phone: 'Please enter a valid US phone number (10 digits)' });
+                  } else {
+                    setErrors({ ...errors, phone: undefined });
+                  }
+                }}
                 disabled={loading || success}
                 className={`w-full px-4 py-2 border rounded-lg outline-none transition ${
                   errors.phone
@@ -286,13 +240,9 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
                   {errors.phone}
                 </p>
               )}
-              <p className="mt-2 text-xs text-gray-500">
-                We'll send your research summary via text (US numbers only)
-              </p>
             </div>
           )}
 
-          {/* Email Input */}
           {deliveryMethod === 'email' && (
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
@@ -303,7 +253,14 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
                 type="email"
                 placeholder="you@example.com"
                 value={email}
-                onChange={handleEmailChange}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (e.target.value && !validateEmail(e.target.value)) {
+                    setErrors({ ...errors, email: 'Please enter a valid email address' });
+                  } else {
+                    setErrors({ ...errors, email: undefined });
+                  }
+                }}
                 disabled={loading || success}
                 className={`w-full px-4 py-2 border rounded-lg outline-none transition ${
                   errors.email
@@ -317,14 +274,10 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
                   {errors.email}
                 </p>
               )}
-              <p className="mt-2 text-xs text-gray-500">
-                We'll send your full research report to this email
-              </p>
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex gap-3 p-6 border-t bg-gray-50 rounded-b-lg">
           <button
             onClick={onClose}

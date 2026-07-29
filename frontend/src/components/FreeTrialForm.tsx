@@ -1,16 +1,22 @@
 /**
  * Shared free-trial form used on homepage (/) and /free-trial
- * Submits to production API via backendUrl(), then shows results in-app.
+ * Submits to production API via backendUrl(), then shows results in-app modal.
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { LocationPicker } from './LocationPicker';
 import { backendUrl } from '../env';
+import ResultsViewerModal, { AnalysisData } from './ResultsViewerModal';
+
+function generateClientResearchId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `ft-${crypto.randomUUID()}`;
+  }
+  return `ft-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export default function FreeTrialForm({ showHero = false }: { showHero?: boolean }) {
-  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     address: '',
     city: '',
@@ -22,6 +28,9 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
+  const [researchId, setResearchId] = useState<string | null>(null);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -75,11 +84,22 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
       const data = await response.json();
 
       if (data.analysis_data) {
-        sessionStorage.setItem('analysisResults', JSON.stringify(data.analysis_data));
+        const clientId =
+          data.research_id ||
+          data.analysis_data.research_id ||
+          generateClientResearchId();
+        const analysisWithId: AnalysisData = {
+          ...data.analysis_data,
+          research_id: clientId,
+        };
+        sessionStorage.setItem('analysisResults', JSON.stringify(analysisWithId));
+        sessionStorage.setItem('researchId', clientId);
         if (formData.email) {
           sessionStorage.setItem('userEmail', formData.email);
         }
-        navigate('/results', { state: { analysis: data.analysis_data } });
+        setResearchId(clientId);
+        setAnalysis(analysisWithId);
+        setResultsOpen(true);
       } else {
         setSubmitted(true);
       }
@@ -97,7 +117,7 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
         <div className="text-center mb-10">
           <h2 className="text-3xl md:text-4xl font-black text-white mb-3">Try RegGuard Free</h2>
           <p className="text-gray-300">
-            No credit card. Enter your site below — results display in the app, then you can text or email them.
+            No credit card. Enter your site below — results open in an overlay, then you can text or email them.
           </p>
         </div>
       )}
@@ -169,10 +189,20 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
             </button>
 
             <p className="text-gray-400 text-sm text-center">
-              Results show in the app. Then you can text or email them from the results page.
+              Results open in the app. Then you can text or email them from the results window.
             </p>
           </form>
         </div>
+      )}
+
+      {analysis && (
+        <ResultsViewerModal
+          isOpen={resultsOpen}
+          onClose={() => setResultsOpen(false)}
+          analysis={analysis}
+          researchId={researchId}
+          defaultEmail={formData.email}
+        />
       )}
     </div>
   );

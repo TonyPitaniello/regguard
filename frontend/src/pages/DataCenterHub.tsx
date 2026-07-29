@@ -92,30 +92,40 @@ export function DataCenterHub() {
 
   const pricingPlans = [
     {
-      name: 'Free Trial',
+      name: 'Contractor Free',
       price: '$0',
-      period: '14 days',
+      period: 'lookups',
       features: [
-        '✓ Site permit analysis (10 sites)',
-        '✓ Timeline predictions',
-        '✓ Regulatory research',
-        '✓ Community access',
-        'Requires credit card'
-      ]
+        '✓ Free site diligence lookup',
+        '✓ Environmental risk summary',
+        '✓ Punch list highlights',
+        '✓ Text or email results',
+        'No credit card required',
+      ],
     },
     {
-      name: 'Professional',
-      price: '$250,000',
-      period: 'per project',
+      name: 'Contractor Pro',
+      price: '$149',
+      period: 'month',
       features: [
-        '✓ Unlimited site analysis',
-        '✓ FERC filing generation',
-        '✓ Capital readiness modeling',
-        '✓ 24/7 compliance support',
-        '✓ Dedicated contractor network'
+        '✓ Unlimited lookups',
+        '✓ Full punch lists & timelines',
+        '✓ Saved project history',
+        '✓ Priority email support',
       ],
-      recommended: true
-    }
+      recommended: true,
+    },
+    {
+      name: 'IC Project Report',
+      price: '$1,500',
+      period: 'one-time',
+      features: [
+        '✓ Full research memo (PDF)',
+        '✓ Punch list + permit package',
+        '✓ Same-day delivery',
+        '✓ Accuracy guarantee',
+      ],
+    },
   ];
 
   return (
@@ -260,7 +270,7 @@ export function DataCenterHub() {
             Plans for Every Stage
           </h3>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {pricingPlans.map((plan, idx) => (
               <div
                 key={idx}
@@ -289,7 +299,16 @@ export function DataCenterHub() {
                   ))}
                 </ul>
                 <button
-                  onClick={() => { setSelectedPlan(idx === 0 ? 'free' : 'pro'); setShowPaymentModal(true); }}
+                  onClick={() => {
+                    if (idx === 0) {
+                      setSelectedPlan('free');
+                      setShowPaymentModal(true);
+                    } else if (idx === 1) {
+                      window.location.href = '/checkout/contractor_pro';
+                    } else {
+                      window.location.href = '/checkout/ic_project';
+                    }
+                  }}
                   className={`w-full py-3 rounded-lg font-semibold transition ${
                     plan.recommended
                       ? 'bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white'

@@ -1,81 +1,117 @@
 /**
  * PremiumCheckoutPage.tsx
- * Phase 2 Week 2: Premium tier checkout with Stripe Elements
- * 
- * Features:
- * - Stripe Elements integration
- * - Professional checkout flow
- * - Payment form validation
- * - Success/error handling
- * - Loading states
+ * Multi-segment checkout: contractor_pro, ic_project, ic_annual, sponsor
  */
 
-import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { backendUrl } from '../env';
 
-// Initialize Stripe
 const stripePromise = loadStripe(
   import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_test_placeholder'
 );
 
-// ============================================================================
-// TIER INFORMATION
-// ============================================================================
-
 const TIERS = {
-  premium: {
-    name: 'Premium',
-    price: '$15,000',
-    price_cents: 1500000,
-    description: 'Complete site diligence package',
+  contractor_pro: {
+    name: 'Contractor Pro',
+    segment: 'Contractor',
+    price: '$149/month',
+    price_cents: 14900,
+    mode: 'subscription' as const,
+    description: 'Unlimited lookups and punch lists for active contractors',
     features: [
-      '📋 Research Memo PDF (environmental findings)',
-      '✓ Complete Punch List (all action items)',
-      '📄 State-Specific Permit Packages',
-      '⏰ Same-day delivery',
-      '📥 Download links valid 30 days',
-      '📧 Email delivery with attachments',
+      'Unlimited free lookups',
+      'Full punch lists & timelines',
+      'Saved project history',
+      'Priority email support',
     ],
-    delivery_time: 'Within 1 hour',
-    color: 'from-blue-600 to-purple-600',
+    delivery_time: 'Instant access',
+    color: 'from-emerald-600 to-green-600',
   },
-  enterprise: {
-    name: 'Enterprise',
-    price: '$60,000/year',
-    price_cents: 6000000,
-    description: 'Premium + annual monitoring',
+  ic_project: {
+    name: 'IC Project Report',
+    segment: 'IC Consultant',
+    price: '$1,500',
+    price_cents: 150000,
+    mode: 'payment' as const,
+    description: 'One-time full project report package',
     features: [
-      'Everything in Premium PLUS:',
-      '📊 Annual monitoring & updates',
-      '📄 2 additional reports per year',
-      '👥 Dedicated support',
-      '🔄 White-label options',
-      '🤝 Custom integrations',
+      'Research memo (PDF)',
+      'Contractor punch list (PDF)',
+      'Permit application package',
+      'Same-day delivery',
     ],
-    delivery_time: 'Within 1 hour',
+    delivery_time: 'Within 24 hours',
+    color: 'from-blue-600 to-indigo-600',
+  },
+  ic_annual: {
+    name: 'IC Annual',
+    segment: 'IC Consultant',
+    price: '$15,000/year',
+    price_cents: 1500000,
+    mode: 'subscription' as const,
+    description: 'Annual subscription for unlimited IC project reports',
+    features: [
+      'Unlimited project reports',
+      'Priority same-day turnaround',
+      'Portfolio monitoring alerts',
+      'Dedicated account support',
+    ],
+    delivery_time: 'Instant access',
     color: 'from-indigo-600 to-blue-600',
+  },
+  sponsor: {
+    name: 'Sponsor',
+    segment: 'Sponsor',
+    price: '$1,500/month',
+    price_cents: 150000,
+    mode: 'subscription' as const,
+    description: 'Monthly sponsorship for utilities and partners',
+    features: [
+      'Sponsored placement & co-branding',
+      'Lead sharing options',
+      'Monthly reporting',
+      'Partner success manager',
+    ],
+    delivery_time: 'Onboarding within 48 hours',
+    color: 'from-amber-600 to-orange-600',
   },
 };
 
-// ============================================================================
-// MAIN CHECKOUT PAGE
-// ============================================================================
+type TierKey = keyof typeof TIERS;
+
+function resolveTierKey(raw?: string | null): TierKey {
+  if (raw && raw in TIERS) return raw as TierKey;
+  // Legacy aliases
+  if (raw === 'premium' || raw === 'enterprise') return 'ic_project';
+  return 'ic_project';
+}
 
 export default function PremiumCheckoutPage() {
   const navigate = useNavigate();
-  const { tier = 'premium' } = useParams();
-  const [step, setStep] = useState('selection'); // selection, checkout, success, error
-  const [selectedTier, setSelectedTier] = useState(tier);
-  const [email, setEmail] = useState('');
+  const { tier: tierParam } = useParams();
+  const [searchParams] = useSearchParams();
+  const initialTier = resolveTierKey(tierParam || searchParams.get('tier'));
+
+  const [step, setStep] = useState<'selection' | 'checkout' | 'success' | 'error'>(
+    tierParam || searchParams.get('tier') ? 'checkout' : 'selection'
+  );
+  const [selectedTier, setSelectedTier] = useState<TierKey>(initialTier);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const key = resolveTierKey(tierParam || searchParams.get('tier'));
+    setSelectedTier(key);
+    if (tierParam || searchParams.get('tier')) {
+      setStep('checkout');
+    }
+  }, [tierParam, searchParams]);
 
   const handleTierSelect = (tierKey: string) => {
-    setSelectedTier(tierKey);
+    setSelectedTier(resolveTierKey(tierKey));
     setStep('checkout');
   };
 
@@ -90,26 +126,19 @@ export default function PremiumCheckoutPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Header */}
       <header className="bg-slate-900/80 backdrop-blur border-b border-purple-500/20 sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <h1 className="text-white font-black text-xl">RegGuard Premium</h1>
+          <h1 className="text-white font-black text-xl">RegGuard Checkout</h1>
           {step !== 'selection' && (
-            <button
-              onClick={handleBack}
-              className="text-gray-400 hover:text-white transition"
-            >
+            <button onClick={handleBack} className="text-gray-400 hover:text-white transition">
               ← Back
             </button>
           )}
         </div>
       </header>
 
-      {/* Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {step === 'selection' && (
-          <TierSelectionStep onSelect={handleTierSelect} />
-        )}
+        {step === 'selection' && <TierSelectionStep onSelect={handleTierSelect} />}
         {step === 'checkout' && (
           <CheckoutFormStep
             tier={selectedTier}
@@ -122,55 +151,45 @@ export default function PremiumCheckoutPage() {
           />
         )}
         {step === 'success' && <SuccessStep tier={selectedTier} />}
-        {step === 'error' && (
-          <ErrorStep error={error} onRetry={() => setStep('checkout')} />
-        )}
+        {step === 'error' && <ErrorStep error={error} onRetry={() => setStep('checkout')} />}
       </main>
     </div>
   );
 }
 
-// ============================================================================
-// TIER SELECTION STEP
-// ============================================================================
-
 function TierSelectionStep({ onSelect }: { onSelect: (tier: string) => void }) {
   return (
     <div>
       <h2 className="text-3xl font-black text-white mb-2">Choose Your Plan</h2>
-      <p className="text-gray-400 mb-12">
-        Select the tier that best fits your needs
-      </p>
+      <p className="text-gray-400 mb-12">Select the tier that fits your segment</p>
 
-      <div className="grid md:grid-cols-2 gap-8">
+      <div className="grid md:grid-cols-2 gap-6">
         {Object.entries(TIERS).map(([key, tier]) => (
           <div
             key={key}
-            className={`bg-gradient-to-br ${tier.color} rounded-lg p-1 hover:scale-105 transition transform`}
+            className={`bg-gradient-to-br ${tier.color} rounded-lg p-1 hover:scale-[1.02] transition transform`}
           >
-            <div className="bg-slate-900 rounded-lg p-8 h-full">
+            <div className="bg-slate-900 rounded-lg p-7 h-full">
+              <p className="text-xs uppercase tracking-wider text-purple-300 font-bold mb-1">
+                {tier.segment}
+              </p>
               <h3 className="text-2xl font-bold text-white mb-2">{tier.name}</h3>
-              <p className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400 mb-4">
+              <p className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 mb-4">
                 {tier.price}
               </p>
-              <p className="text-gray-400 mb-6">{tier.description}</p>
-
-              <ul className="space-y-3 mb-8">
-                {tier.features.map((feature, idx) => (
-                  <li key={idx} className="text-gray-300 flex items-start">
+              <p className="text-gray-400 mb-6 text-sm">{tier.description}</p>
+              <ul className="space-y-2 mb-8">
+                {tier.features.map((feature) => (
+                  <li key={feature} className="text-gray-300 flex items-start text-sm">
                     <span className="mr-3 text-green-400">✓</span>
                     <span>{feature}</span>
                   </li>
                 ))}
               </ul>
-
-              <div className="text-sm text-gray-500 mb-6">
-                📦 Delivery: {tier.delivery_time}
-              </div>
-
+              <p className="text-sm text-gray-500 mb-4">📦 {tier.delivery_time}</p>
               <button
                 onClick={() => onSelect(key)}
-                className={`w-full px-6 py-3 bg-gradient-to-r ${tier.color} text-white font-bold rounded-lg hover:shadow-lg hover:shadow-purple-500/50 transition`}
+                className={`w-full px-6 py-3 bg-gradient-to-r ${tier.color} text-white font-bold rounded-lg hover:shadow-lg transition`}
               >
                 Select {tier.name}
               </button>
@@ -182,58 +201,51 @@ function TierSelectionStep({ onSelect }: { onSelect: (tier: string) => void }) {
   );
 }
 
-// ============================================================================
-// CHECKOUT FORM STEP
-// ============================================================================
-
 function CheckoutFormStep({
   tier,
   onBack,
   onSuccess,
   onError,
 }: {
-  tier: string;
+  tier: TierKey;
   onBack: () => void;
   onSuccess: () => void;
   onError: (error: string) => void;
 }) {
-  const tierInfo = TIERS[tier as keyof typeof TIERS];
+  const tierInfo = TIERS[tier];
 
   return (
     <div>
       <h2 className="text-3xl font-black text-white mb-2">Complete Your Order</h2>
       <p className="text-gray-400 mb-12">
-        {tierInfo.name} Plan - {tierInfo.price}
+        {tierInfo.name} — {tierInfo.price}
+        {tierInfo.mode === 'subscription' ? ' (subscription)' : ' (one-time)'}
       </p>
 
       <div className="grid lg:grid-cols-3 gap-8">
-        {/* Order Summary */}
         <div className="lg:col-span-1">
           <div className="bg-slate-800 border border-purple-500/20 rounded-lg p-6 sticky top-24">
             <h3 className="text-lg font-bold text-white mb-6">Order Summary</h3>
-
             <div className="space-y-4 mb-6">
               <div className="flex justify-between">
-                <span className="text-gray-400">{tierInfo.name} Plan</span>
+                <span className="text-gray-400">{tierInfo.name}</span>
                 <span className="text-white font-bold">{tierInfo.price}</span>
               </div>
               <div className="border-t border-gray-700 pt-4 flex justify-between">
                 <span className="text-white font-bold">Total</span>
-                <span className="text-2xl font-black text-purple-400">
-                  {tierInfo.price}
-                </span>
+                <span className="text-2xl font-black text-purple-400">{tierInfo.price}</span>
               </div>
             </div>
-
             <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-4 text-sm text-purple-200">
-              <p>✓ Includes all benefits</p>
-              <p>✓ Same-day delivery</p>
-              <p>✓ 30-day access</p>
+              <p>✓ {tierInfo.mode === 'payment' ? 'One-time payment' : 'Recurring billing'}</p>
+              <p>✓ {tierInfo.delivery_time}</p>
             </div>
+            <button onClick={onBack} className="mt-4 text-sm text-gray-400 hover:text-white">
+              Change plan
+            </button>
           </div>
         </div>
 
-        {/* Payment Form */}
         <div className="lg:col-span-2">
           <Elements stripe={stripePromise}>
             <PaymentForm
@@ -248,10 +260,6 @@ function CheckoutFormStep({
     </div>
   );
 }
-
-// ============================================================================
-// PAYMENT FORM (with Stripe Elements)
-// ============================================================================
 
 function PaymentForm({
   tier,
@@ -283,29 +291,30 @@ function PaymentForm({
     }
 
     try {
-      // 1. Get trial_id from session/URL
       const trialId = sessionStorage.getItem('trialId') || 'unknown';
+      const userId = sessionStorage.getItem('userId') || email || 'anonymous';
 
-      // 2. Create checkout session
       const response = await fetch(backendUrl('/checkout'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            trial_id: trialId,
-            tier,
-          }),
-        }
-      );
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trial_id: trialId,
+          user_id: userId,
+          tier,
+          email,
+          name,
+          success_url: `${window.location.origin}/checkout/success`,
+          cancel_url: `${window.location.origin}/checkout/${tier}`,
+        }),
+      });
 
       if (!response.ok) throw new Error('Checkout creation failed');
 
       const { checkout_url } = await response.json();
-
-      // 3. Redirect to Stripe checkout
       if (checkout_url) {
         window.location.href = checkout_url;
       } else {
-        throw new Error('No checkout URL received');
+        onSuccess();
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Payment failed';
@@ -318,7 +327,6 @@ function PaymentForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Email */}
       <div>
         <label htmlFor="email" className="block text-white font-bold mb-2">
           Email Address *
@@ -334,7 +342,6 @@ function PaymentForm({
         />
       </div>
 
-      {/* Name */}
       <div>
         <label htmlFor="name" className="block text-white font-bold mb-2">
           Full Name *
@@ -350,7 +357,6 @@ function PaymentForm({
         />
       </div>
 
-      {/* Card Element */}
       <div>
         <label className="block text-white font-bold mb-2">Payment Details *</label>
         <div className="p-4 bg-slate-800 border border-purple-500/30 rounded-lg">
@@ -360,20 +366,15 @@ function PaymentForm({
                 base: {
                   fontSize: '16px',
                   color: '#fff',
-                  '::placeholder': {
-                    color: '#9CA3AF',
-                  },
+                  '::placeholder': { color: '#9CA3AF' },
                 },
-                invalid: {
-                  color: '#EF4444',
-                },
+                invalid: { color: '#EF4444' },
               },
             }}
           />
         </div>
       </div>
 
-      {/* Error Message */}
       {cardError && (
         <div className="flex gap-3 p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
           <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
@@ -381,33 +382,25 @@ function PaymentForm({
         </div>
       )}
 
-      {/* Disclaimer */}
       <div className="bg-slate-800/50 border border-purple-500/10 rounded-lg p-4 text-sm text-gray-400">
-        <p>
-          By clicking "Complete Purchase", you agree to our Terms of Service.
-          Your payment information is secure and processed through Stripe.
-        </p>
+        By clicking &quot;Complete Purchase&quot;, you agree to our Terms of Service. Payment is
+        processed securely through Stripe.
       </div>
 
-      {/* Submit Button */}
       <button
         type="submit"
         disabled={loading || !stripe || !elements}
         className="w-full px-6 py-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold text-lg rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
         {loading && <Loader className="w-5 h-5 animate-spin" />}
-        {loading ? 'Processing...' : `Complete Purchase - ${tierPrice}`}
+        {loading ? 'Processing...' : `Complete Purchase — ${tierPrice}`}
       </button>
     </form>
   );
 }
 
-// ============================================================================
-// SUCCESS STEP
-// ============================================================================
-
-function SuccessStep({ tier }: { tier: string }) {
-  const tierInfo = TIERS[tier as keyof typeof TIERS];
+function SuccessStep({ tier }: { tier: TierKey }) {
+  const tierInfo = TIERS[tier];
   const navigate = useNavigate();
 
   return (
@@ -415,33 +408,8 @@ function SuccessStep({ tier }: { tier: string }) {
       <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-6" />
       <h2 className="text-3xl font-black text-white mb-4">Payment Successful!</h2>
       <p className="text-gray-300 mb-8 max-w-2xl mx-auto">
-        Thank you for your purchase! Your {tierInfo.name} package has been processed.
+        Thank you! Your {tierInfo.name} purchase has been processed.
       </p>
-
-      <div className="bg-slate-800 border border-purple-500/20 rounded-lg p-8 max-w-2xl mx-auto mb-12">
-        <h3 className="text-lg font-bold text-white mb-6">What's Next?</h3>
-        <ul className="space-y-4 text-left">
-          <li className="flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-green-400 mt-1 flex-shrink-0" />
-            <span className="text-gray-300">
-              <strong>PDFs are being generated</strong> - You'll receive email download links within 1 hour
-            </span>
-          </li>
-          <li className="flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-green-400 mt-1 flex-shrink-0" />
-            <span className="text-gray-300">
-              <strong>Check your inbox</strong> - Including spam folder for email from support@regguardagent.com
-            </span>
-          </li>
-          <li className="flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-green-400 mt-1 flex-shrink-0" />
-            <span className="text-gray-300">
-              <strong>Download for 30 days</strong> - Links will expire in 30 days. Download immediately if needed.
-            </span>
-          </li>
-        </ul>
-      </div>
-
       <button
         onClick={() => navigate('/orders')}
         className="px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold rounded-lg hover:shadow-lg transition"
@@ -452,19 +420,12 @@ function SuccessStep({ tier }: { tier: string }) {
   );
 }
 
-// ============================================================================
-// ERROR STEP
-// ============================================================================
-
 function ErrorStep({ error, onRetry }: { error: string; onRetry: () => void }) {
   return (
     <div className="text-center">
       <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-6" />
       <h2 className="text-3xl font-black text-white mb-4">Payment Failed</h2>
-      <p className="text-gray-300 mb-8 max-w-2xl mx-auto">
-        {error}
-      </p>
-
+      <p className="text-gray-300 mb-8 max-w-2xl mx-auto">{error}</p>
       <button
         onClick={onRetry}
         className="px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold rounded-lg hover:shadow-lg transition"

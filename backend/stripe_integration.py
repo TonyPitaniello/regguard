@@ -19,21 +19,56 @@ logger = logging.getLogger(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-# Product definitions
+# Product definitions — multi-segment pricing
 PRODUCTS = {
-    "premium": {
-        "name": "RegGuard Premium Report",
-        "description": "Complete site diligence package: PDFs, punch list, permits",
-        "amount_cents": 1500000,  # $15,000
+    "contractor_pro": {
+        "name": "Contractor Pro",
+        "description": "Unlimited lookups and punch lists — $149/month",
+        "amount_cents": 14900,
         "currency": "usd",
-        "tier": "premium",
+        "tier": "contractor_pro",
+        "mode": "subscription",
+    },
+    "ic_project": {
+        "name": "IC Project Report",
+        "description": "One-time full project report package",
+        "amount_cents": 150000,
+        "currency": "usd",
+        "tier": "ic_project",
+        "mode": "payment",
+    },
+    "ic_annual": {
+        "name": "IC Annual",
+        "description": "Unlimited IC project reports — $15,000/year",
+        "amount_cents": 1500000,
+        "currency": "usd",
+        "tier": "ic_annual",
+        "mode": "subscription",
+    },
+    "sponsor": {
+        "name": "Sponsor",
+        "description": "Monthly sponsorship — $1,500/month",
+        "amount_cents": 150000,
+        "currency": "usd",
+        "tier": "sponsor",
+        "mode": "subscription",
+    },
+    # Legacy aliases
+    "premium": {
+        "name": "IC Project Report",
+        "description": "One-time full project report package",
+        "amount_cents": 150000,
+        "currency": "usd",
+        "tier": "ic_project",
+        "mode": "payment",
     },
     "enterprise": {
-        "name": "RegGuard Enterprise (Annual)",
-        "description": "Premium + annual monitoring + additional reports",
-        "amount_cents": 6000000,  # $60,000
+        "name": "IC Annual",
+        "description": "Unlimited IC project reports — $15,000/year",
+        "amount_cents": 1500000,
         "currency": "usd",
-        "tier": "enterprise",
+        "tier": "ic_annual",
+        "mode": "subscription",
     },
 }
 
@@ -78,12 +113,24 @@ async def create_checkout_session(request: CheckoutRequest) -> Dict[str, Any]:
         product = PRODUCTS.get(request.tier)
         if not product:
             raise ValueError(f"Invalid tier: {request.tier}")
-        
-        # Create Stripe checkout session
-        session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[
-                {
+
+        mode = product.get("mode", "payment")
+        line_item: Dict[str, Any]
+        if mode == "subscription":
+            # Prefer env price IDs when available; otherwise one-time price_data is not valid for subscription
+            price_env_map = {
+                "contractor_pro": os.getenv("STRIPE_PRICE_CONTRACTOR_PRO"),
+                "ic_annual": os.getenv("STRIPE_PRICE_IC_ANNUAL"),
+                "sponsor": os.getenv("STRIPE_PRICE_SPONSOR"),
+                "enterprise": os.getenv("STRIPE_PRICE_IC_ANNUAL"),
+            }
+            price_id = price_env_map.get(request.tier) or price_env_map.get(product["tier"])
+            if price_id:
+                line_item = {"price": price_id, "quantity": 1}
+            else:
+                # Fall back to one-time payment with price_data if no subscription price configured
+                mode = "payment"
+                line_item = {
                     "price_data": {
                         "currency": product["currency"],
                         "product_data": {
@@ -94,14 +141,30 @@ async def create_checkout_session(request: CheckoutRequest) -> Dict[str, Any]:
                     },
                     "quantity": 1,
                 }
-            ],
-            mode="payment",
+        else:
+            line_item = {
+                "price_data": {
+                    "currency": product["currency"],
+                    "product_data": {
+                        "name": product["name"],
+                        "description": product["description"],
+                    },
+                    "unit_amount": product["amount_cents"],
+                },
+                "quantity": 1,
+            }
+
+        # Create Stripe checkout session
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[line_item],
+            mode=mode,
             success_url=request.success_url,
             cancel_url=request.cancel_url,
             # Metadata to track trial_id
             metadata={
                 "trial_id": request.trial_id,
-                "tier": request.tier,
+                "tier": product["tier"],
             },
             # Customer email pre-fill (optional)
             customer_email="",

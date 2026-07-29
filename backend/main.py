@@ -223,6 +223,17 @@ class CheckoutSessionResponse(BaseModel):
     session_id: str = Field(..., description="Stripe Checkout Session ID")
 
 
+class TierCheckoutRequest(BaseModel):
+    """Multi-segment checkout request from PremiumCheckoutPage."""
+    tier: str
+    user_id: Optional[str] = None
+    trial_id: Optional[str] = None
+    email: Optional[str] = None
+    name: Optional[str] = None
+    success_url: Optional[str] = None
+    cancel_url: Optional[str] = None
+
+
 # ========== Claude memo — Markdown Contractor Action Plan ==========
 # Digest: ``research_memo.build_research_digest``. Scout query construction + data fence: ``scraper.py``.
 _CONTRACTOR_ACTION_PLAN_SYSTEM = """You are Reg Guard's **field punch list** writer for licensed electrical contractors.
@@ -1048,6 +1059,34 @@ def debug_config() -> Dict[str, Any]:
 
 
 # ========== Authentication & Payment Gates ==========
+
+@app.post("/checkout", tags=["Payments"])
+async def create_tier_checkout(body: TierCheckoutRequest) -> Dict[str, Any]:
+    """
+    Create Stripe Checkout for multi-segment tiers
+    (contractor_pro, ic_project, ic_annual, sponsor).
+    """
+    try:
+        from stripe_service import create_checkout_session as stripe_create_checkout
+
+        user_id = body.user_id or body.email or body.trial_id or "anonymous"
+        frontend = os.getenv("FRONTEND_APP_URL", "https://app.regguardagent.com")
+        success_url = body.success_url or f"{frontend}/checkout/success"
+        cancel_url = body.cancel_url or f"{frontend}/checkout/{body.tier}"
+
+        result = await stripe_create_checkout(
+            user_id=user_id,
+            tier=body.tier,
+            success_url=success_url,
+            cancel_url=cancel_url,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("Tier checkout creation failed")
+        raise HTTPException(status_code=500, detail="Failed to create checkout session") from e
+
 
 @app.post("/auth/create-checkout-session")
 async def create_checkout_session_endpoint(request: SignupRequest) -> CheckoutSessionResponse:
@@ -2939,45 +2978,185 @@ async def list_data_center_leads(request: Request) -> Dict[str, Any]:
 # RESULT DELIVERY ENDPOINTS (SMS & EMAIL)
 # ==========================================
 
+class ResearchDeliverySummary(BaseModel):
+    """Lightweight summary for free-trial results not yet persisted in DB."""
+    zip: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    risk_level: Optional[str] = None
+    timeline: Optional[str] = None
+    cost: Optional[float] = None
+    address: Optional[str] = None
+
+
+class SendSmsRequest(BaseModel):
+    phone_number: str
+    summary: Optional[ResearchDeliverySummary] = None
+    user_id: Optional[str] = None
+    research_id: Optional[str] = None
+
+
+class SendEmailRequest(BaseModel):
+    email: Optional[str] = None
+    email_address: Optional[str] = None
+    summary: Optional[ResearchDeliverySummary] = None
+    user_id: Optional[str] = None
+    research_id: Optional[str] = None
+
+
+def _research_data_from_summary(summary: ResearchDeliverySummary) -> Dict[str, Any]:
+    """Convert a free-trial summary payload into delivery-service research_data shape."""
+    risk = (summary.risk_level or "UNKNOWN").upper()
+    high_risk = 1 if risk in ("HIGH", "CRITICAL") else 0
+    cost = float(summary.cost or 0)
+    timeline = summary.timeline or "TBD"
+    return {
+        "project_info": {
+            "zip": summary.zip or "",
+            "city": summary.city or "",
+            "state": summary.state or "",
+            "address": summary.address or "",
+        },
+        "summary": {
+            "high_risk_count": high_risk,
+            "estimated_total_cost": cost,
+            "estimated_timeline": timeline,
+            "total_environmental_risks": high_risk,
+            "total_punch_list_items": 0,
+        },
+        "punch_list": {
+            "punch_list": [],
+            "critical_path": [],
+            "estimated_total_cost": cost,
+            "timeline_summary": timeline,
+        },
+        "environmental_screening": {
+            "risk_level": risk,
+            "findings": [],
+        },
+    }
+
+
+def _resolve_research_data(
+    research_id: Optional[str],
+    summary: Optional[ResearchDeliverySummary],
+) -> Dict[str, Any]:
+    if summary is not None:
+        return _research_data_from_summary(summary)
+    if research_id:
+        stored = _get_research_data(research_id)
+        if stored:
+            return stored
+    raise HTTPException(
+        status_code=404,
+        detail="Research result not found. Provide a summary payload for free-trial delivery.",
+    )
+
+
+@app.post("/research/send-sms", tags=["Results"])
+async def send_result_sms_standalone(
+    request: Request,
+    body: SendSmsRequest,
+) -> Dict[str, Any]:
+    """
+    Send research summary via SMS without requiring a persisted research record.
+    Accepts optional summary for free-trial modal delivery.
+    """
+    try:
+        user_id = body.user_id or request.headers.get("X-User-ID") or "anonymous"
+        research_id = body.research_id or f"ephemeral-{user_id}"
+        research_data = _resolve_research_data(body.research_id, body.summary)
+
+        from result_delivery_service import get_delivery_service
+        delivery_service = get_delivery_service(db_pool=None)
+
+        result = await delivery_service.send_sms(
+            phone_number=body.phone_number,
+            research_data=research_data,
+            user_id=user_id,
+            research_id=research_id,
+        )
+
+        if result["status"] == "failed":
+            raise HTTPException(status_code=400, detail=result.get("error", "Failed to send SMS"))
+
+        return {
+            "status": "sent",
+            "message_id": result.get("message_id"),
+            "phone": result.get("phone"),
+            "delivery_id": result.get("delivery_id"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending SMS: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send SMS: {str(e)}")
+
+
+@app.post("/research/send-email", tags=["Results"])
+async def send_result_email_standalone(
+    request: Request,
+    body: SendEmailRequest,
+) -> Dict[str, Any]:
+    """
+    Send research summary via email without requiring a persisted research record.
+    Accepts optional summary for free-trial modal delivery.
+    """
+    try:
+        email_address = body.email_address or body.email
+        if not email_address:
+            raise HTTPException(status_code=400, detail="email or email_address is required")
+
+        user_id = body.user_id or request.headers.get("X-User-ID") or "anonymous"
+        research_id = body.research_id or f"ephemeral-{user_id}"
+        research_data = _resolve_research_data(body.research_id, body.summary)
+
+        from result_delivery_service import get_delivery_service
+        delivery_service = get_delivery_service(db_pool=None)
+
+        result = await delivery_service.send_email(
+            email_address=email_address,
+            research_data=research_data,
+            user_id=user_id,
+            research_id=research_id,
+        )
+
+        if result["status"] == "failed":
+            raise HTTPException(status_code=400, detail=result.get("error", "Failed to send email"))
+
+        return {
+            "status": "sent",
+            "email_id": result.get("email_id"),
+            "email": result.get("email"),
+            "delivery_id": result.get("delivery_id"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+
+
 @app.post("/research/{research_id}/send-sms", tags=["Results"])
 async def send_result_sms(
     request: Request,
     research_id: str,
-    phone_number: str = Body(..., embed=True),
+    body: Dict[str, Any] = Body(...),
 ) -> Dict[str, Any]:
     """
     Send research result via SMS (Twilio).
-    
-    Request body:
-    ```json
-    {
-        "phone_number": "+1-XXX-XXX-XXXX" or "XXXXXXXXXX"
-    }
-    ```
-    
-    Response:
-    ```json
-    {
-        "status": "sent" | "failed",
-        "message_id": "SMxxxxxxxx...",
-        "phone": "+1XXXXXXXXXX",
-        "delivery_id": "uuid",
-        "error": "..." (if failed)
-    }
-    ```
+    Accepts phone_number plus optional summary for free-trial results.
     """
     try:
-        # Get user context (would need auth middleware)
-        user_id = request.headers.get("X-User-ID") or "anonymous"
+        phone_number = body.get("phone_number")
+        if not phone_number:
+            raise HTTPException(status_code=400, detail="phone_number is required")
 
-        # Get research result from session or database
-        # For now, using a mock structure - in production, fetch from DB
-        research_data = _get_research_data(research_id)
+        user_id = body.get("user_id") or request.headers.get("X-User-ID") or "anonymous"
+        summary_raw = body.get("summary")
+        summary = ResearchDeliverySummary(**summary_raw) if isinstance(summary_raw, dict) else None
+        research_data = _resolve_research_data(research_id, summary)
 
-        if not research_data:
-            raise HTTPException(status_code=404, detail="Research result not found")
-
-        # Send SMS
         from result_delivery_service import get_delivery_service
         delivery_service = get_delivery_service(db_pool=None)
 
@@ -3009,40 +3188,22 @@ async def send_result_sms(
 async def send_result_email(
     request: Request,
     research_id: str,
-    email_address: str = Body(..., embed=True),
+    body: Dict[str, Any] = Body(...),
 ) -> Dict[str, Any]:
     """
     Send research result via email (SendGrid/Resend).
-    
-    Request body:
-    ```json
-    {
-        "email_address": "user@example.com"
-    }
-    ```
-    
-    Response:
-    ```json
-    {
-        "status": "sent" | "failed",
-        "email_id": "...",
-        "email": "user@example.com",
-        "delivery_id": "uuid",
-        "error": "..." (if failed)
-    }
-    ```
+    Accepts email/email_address plus optional summary for free-trial results.
     """
     try:
-        # Get user context
-        user_id = request.headers.get("X-User-ID") or "anonymous"
+        email_address = body.get("email_address") or body.get("email")
+        if not email_address:
+            raise HTTPException(status_code=400, detail="email or email_address is required")
 
-        # Get research result
-        research_data = _get_research_data(research_id)
+        user_id = body.get("user_id") or request.headers.get("X-User-ID") or "anonymous"
+        summary_raw = body.get("summary")
+        summary = ResearchDeliverySummary(**summary_raw) if isinstance(summary_raw, dict) else None
+        research_data = _resolve_research_data(research_id, summary)
 
-        if not research_data:
-            raise HTTPException(status_code=404, detail="Research result not found")
-
-        # Send email
         from result_delivery_service import get_delivery_service
         delivery_service = get_delivery_service(db_pool=None)
 
