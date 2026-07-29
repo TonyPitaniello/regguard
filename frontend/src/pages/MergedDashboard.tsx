@@ -13,12 +13,17 @@ import {
   FileText,
   Download,
 } from 'lucide-react';
+import FreeTrialForm from '../components/FreeTrialForm';
 
 export function PlatformDashboard() {
   const navigate = useNavigate();
 
   const handleOrderReport = () => {
     navigate('/order');
+  };
+
+  const scrollToFreeTrial = () => {
+    document.getElementById('free-trial-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   return (
@@ -88,7 +93,7 @@ export function PlatformDashboard() {
           {/* CTA: What to do now (StoryBrand clear call) */}
           <div className="flex flex-col sm:flex-row gap-4 mb-8">
             <button
-              onClick={() => navigate('/free-trial')}
+              onClick={scrollToFreeTrial}
               className="px-10 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-black text-lg rounded-xl transition shadow-lg shadow-green-500/30 hover:shadow-green-500/50 cursor-pointer"
             >
               Try Free (No Credit Card)
@@ -103,8 +108,15 @@ export function PlatformDashboard() {
 
           {/* Subtext: Instant delivery, automatic */}
           <p className="text-gray-400 text-sm mt-6">
-            <strong>Reports delivered same-day.</strong> Fill out order form. Pay. Get research memo + punch list + permit package PDF instantly via email.
+            <strong>Results display in the app.</strong> Then text or email them. Full report package available after upgrade.
           </p>
+        </div>
+      </section>
+
+      {/* ===== FREE TRIAL ON HOMEPAGE ===== */}
+      <section className="px-4 py-16 sm:px-6 lg:px-8 border-t border-purple-500/10 bg-slate-900/40">
+        <div className="max-w-2xl mx-auto">
+          <FreeTrialForm showHero />
         </div>
       </section>
 
