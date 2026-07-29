@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react';
 import { LocationPicker } from '../components/LocationPicker';
+import { backendUrl } from '../env';
 
 export default function FreeTrialPage() {
   const navigate = useNavigate();
@@ -14,6 +15,7 @@ export default function FreeTrialPage() {
     address: '',
     city: '',
     state: '',
+    zip: '',
     projectType: 'data-center',
     email: '',
   });
@@ -59,10 +61,8 @@ export default function FreeTrialPage() {
     }
 
     try {
-      // Call backend free trial endpoint
-      const response = await fetch(
-        `${import.meta.env.VITE_BACKEND_ORIGIN}/free-trial`,
-        {
+      // Call backend free trial endpoint (works on localhost + app.regguardagent.com)
+      const response = await fetch(backendUrl('/free-trial'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

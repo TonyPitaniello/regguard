@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Download, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { backendUrl } from '../env';
 
 interface PDF {
   type: 'research_memo' | 'punch_list' | 'permits';
@@ -41,7 +42,7 @@ export default function OrdersPage() {
     try {
       setLoading(true);
       const response = await fetch(
-        `${import.meta.env.VITE_BACKEND_ORIGIN}/orders?email=${userEmail}`
+        backendUrl(`/orders?email=${encodeURIComponent(userEmail)}`)
       );
 
       if (!response.ok) throw new Error('Failed to fetch orders');

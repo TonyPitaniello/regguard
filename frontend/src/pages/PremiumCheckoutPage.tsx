@@ -15,6 +15,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { backendUrl } from '../env';
 
 // Initialize Stripe
 const stripePromise = loadStripe(
@@ -286,9 +287,7 @@ function PaymentForm({
       const trialId = sessionStorage.getItem('trialId') || 'unknown';
 
       // 2. Create checkout session
-      const response = await fetch(
-        `${import.meta.env.VITE_BACKEND_ORIGIN}/checkout`,
-        {
+      const response = await fetch(backendUrl('/checkout'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

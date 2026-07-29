@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Phone, Mail, AlertCircle, CheckCircle, Loader } from 'lucide-react';
+import { backendUrl } from '../env';
 
 interface ShareResultsModalProps {
   isOpen: boolean;
@@ -99,7 +100,7 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
     setErrors({});
 
     try {
-      const response = await fetch(`/api/research/${researchId}/send-sms`, {
+      const response = await fetch(backendUrl(`/research/${researchId}/send-sms`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -166,7 +167,7 @@ export const ShareResultsModal: React.FC<ShareResultsModalProps> = ({
     setErrors({});
 
     try {
-      const response = await fetch(`/api/research/${researchId}/send-email`, {
+      const response = await fetch(backendUrl(`/research/${researchId}/send-email`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
