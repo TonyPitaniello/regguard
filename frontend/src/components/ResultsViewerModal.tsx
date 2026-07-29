@@ -3,9 +3,11 @@
  * Stays on the current page (homepage / free-trial); does not require /results navigation.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, ChevronDown, ChevronUp, Copy, Check, Share2 } from 'lucide-react';
 import SendResultsForm, { ResultsSummaryPayload } from './SendResultsForm';
+
+const APP_URL = 'https://app.regguardagent.com/';
 
 export interface AnalysisData {
   timestamp: string;
@@ -73,9 +75,13 @@ function buildShareText(analysis: AnalysisData): string {
   const cost = analysis.summary?.estimated_total_cost;
   return [
     `RegGuard site diligence: ${p.address}, ${p.city}, ${p.state} ${p.zip}`,
-    `Risk: ${risk} · Timeline: ${timeline}${cost != null ? ` · Est. cost: $${Number(cost).toLocaleString()}` : ''}`,
-    `Try RegGuard free: ${typeof window !== 'undefined' ? window.location.origin : 'https://app.regguardagent.com'}`,
-  ].join('\n');
+    `Risk: ${risk}`,
+    `Timeline: ${timeline}`,
+    cost != null ? `Est. cost: $${Number(cost).toLocaleString()}` : '',
+    `Try RegGuard free: ${APP_URL}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function getRiskColor(level: string) {
@@ -133,34 +139,48 @@ export default function ResultsViewerModal({
     punchList: true,
     critical: true,
   });
-  const [copied, setCopied] = useState<'link' | 'text' | null>(null);
+  const [copied, setCopied] = useState<'link' | 'text' | 'facebook' | 'instagram' | null>(null);
+  const [toast, setToast] = useState('');
+
+  // Lock body scroll while modal is open so the form/map behind cannot float with page scroll
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isOpen]);
 
   if (!isOpen || !analysis) return null;
 
   const summary = buildSummaryFromAnalysis(analysis);
   const effectiveResearchId = researchId || analysis.research_id || null;
   const shareText = buildShareText(analysis);
-  const resultsLink =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/results`
-      : 'https://app.regguardagent.com/results';
 
   const toggle = (key: keyof typeof expanded) => {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const copy = async (kind: 'link' | 'text') => {
-    // Cross-device "link" must carry the summary — sessionStorage alone won't travel.
-    const value =
-      kind === 'link'
-        ? `${shareText}\n\nOpen RegGuard: ${resultsLink}`
-        : shareText;
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(''), 3200);
+  };
+
+  const copyShareText = async (kind: 'text' | 'facebook' | 'instagram' = 'text') => {
     try {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(shareText);
       setCopied(kind);
       window.setTimeout(() => setCopied(null), 2000);
+      if (kind === 'instagram') {
+        showToast('Caption copied — paste in Instagram DM or Story');
+      } else if (kind === 'facebook') {
+        showToast('Summary copied — paste into your Facebook post');
+      }
+      return true;
     } catch {
-      /* ignore */
+      showToast('Could not copy — select share text manually');
+      return false;
     }
   };
 
@@ -168,13 +188,18 @@ export default function ResultsViewerModal({
     window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer');
   };
 
-  const openLinkedIn = () => {
-    void copy('text');
+  const openFacebook = async () => {
+    await copyShareText('facebook');
     window.open(
-      `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(resultsLink)}`,
+      `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(APP_URL)}`,
       '_blank',
       'noopener,noreferrer'
     );
+  };
+
+  const openInstagram = async () => {
+    await copyShareText('instagram');
+    window.open('https://www.instagram.com/', '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -188,7 +213,7 @@ export default function ResultsViewerModal({
 
       <div className="relative w-full max-w-5xl max-h-[92vh] flex flex-col bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-purple-500/30 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 px-5 sm:px-8 py-5 border-b border-slate-700/80 bg-slate-900/90 sticky top-0 z-10">
+        <div className="flex items-start justify-between gap-4 px-5 sm:px-8 py-5 border-b border-slate-700/80 bg-slate-900/90 shrink-0 z-10">
           <div>
             <h2 id="results-modal-title" className="text-2xl sm:text-3xl font-black text-white">
               Your Site Diligence Analysis
@@ -208,7 +233,7 @@ export default function ResultsViewerModal({
           </button>
         </div>
 
-        {/* Text / Email FIRST — always visible without scrolling */}
+        {/* Text / Email + social share — always visible without scrolling results */}
         <div className="px-5 sm:px-8 py-4 border-b border-emerald-500/30 bg-slate-950/90 shrink-0 space-y-3">
           <SendResultsForm
             researchId={effectiveResearchId}
@@ -216,37 +241,56 @@ export default function ResultsViewerModal({
             defaultEmail={defaultEmail}
             defaultPhone={defaultPhone}
           />
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void copy('link')}
-              className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-purple-500/40 bg-purple-500/10 text-purple-200 text-sm font-semibold hover:bg-purple-500/20 transition"
-            >
-              {copied === 'link' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-              {copied === 'link' ? 'Copied link' : 'Copy link to results'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void copy('text')}
-              className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-slate-600 bg-slate-800/80 text-gray-200 text-sm font-semibold hover:bg-slate-700 transition"
-            >
-              {copied === 'text' ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
-              {copied === 'text' ? 'Copied share text' : 'Copy share text'}
-            </button>
-            <button
-              type="button"
-              onClick={openWhatsApp}
-              className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-sm font-semibold hover:bg-emerald-500/20 transition"
-            >
-              WhatsApp
-            </button>
-            <button
-              type="button"
-              onClick={openLinkedIn}
-              className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-blue-500/40 bg-blue-500/10 text-blue-200 text-sm font-semibold hover:bg-blue-500/20 transition"
-            >
-              LinkedIn
-            </button>
+
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-purple-300/90 mb-2 flex items-center gap-2">
+              <Share2 className="w-3.5 h-3.5" />
+              Share results
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openWhatsApp}
+                className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-sm font-semibold hover:bg-emerald-500/20 transition"
+              >
+                WhatsApp
+              </button>
+              <button
+                type="button"
+                onClick={() => void openFacebook()}
+                className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-blue-500/40 bg-blue-500/10 text-blue-200 text-sm font-semibold hover:bg-blue-500/20 transition"
+              >
+                Facebook
+              </button>
+              <button
+                type="button"
+                onClick={() => void openInstagram()}
+                className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-pink-500/40 bg-pink-500/10 text-pink-200 text-sm font-semibold hover:bg-pink-500/20 transition"
+              >
+                Instagram
+              </button>
+              <button
+                type="button"
+                onClick={() => void copyShareText('text')}
+                className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-purple-500/40 bg-purple-500/10 text-purple-200 text-sm font-semibold hover:bg-purple-500/20 transition"
+              >
+                {copied === 'text' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {copied === 'text' ? 'Copied' : 'Copy'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void copyShareText('facebook')}
+                className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-slate-600 bg-slate-800/80 text-gray-200 text-sm font-semibold hover:bg-slate-700 transition"
+              >
+                {copied === 'facebook' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {copied === 'facebook' ? 'Copied for Facebook' : 'Copy for Facebook'}
+              </button>
+            </div>
+            {toast && (
+              <p className="mt-2 text-sm text-emerald-300" role="status">
+                {toast}
+              </p>
+            )}
           </div>
         </div>
 

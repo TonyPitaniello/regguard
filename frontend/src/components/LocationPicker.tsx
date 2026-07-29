@@ -1,14 +1,19 @@
 /**
  * LocationPicker — Auto-detect location or pick on map
  * Uses Geolocation API + OpenStreetMap (free, no API key needed)
+ *
+ * Map is intentionally position:relative (never sticky/fixed) so it stays
+ * in document flow while the page scrolls — especially after results open.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { MapPin, Navigation, AlertCircle } from 'lucide-react';
 
 interface LocationPickerProps {
   onLocationSelect: (address: string, city: string, state: string, zip: string, lat: number, lng: number) => void;
   disabled?: boolean;
+  /** When true (e.g. results modal open), hide/destroy the map so it cannot float over the page */
+  collapseMap?: boolean;
   /** Voice fill / parent-driven address fields */
   externalValues?: {
     address?: string;
@@ -18,9 +23,20 @@ interface LocationPickerProps {
   } | null;
 }
 
+const MAP_SHELL_STYLE: CSSProperties = {
+  position: 'relative',
+  zIndex: 0,
+  overflow: 'hidden',
+  isolation: 'isolate',
+  contain: 'layout paint',
+  transform: 'none',
+  WebkitTransform: 'none',
+};
+
 export function LocationPicker({
   onLocationSelect,
   disabled = false,
+  collapseMap = false,
   externalValues = null,
 }: LocationPickerProps) {
   const [address, setAddress] = useState('');
@@ -36,6 +52,18 @@ export function LocationPicker({
   const [locationConfirmed, setLocationConfirmed] = useState(false);
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
+
+  const destroyMap = () => {
+    if (mapRef.current) {
+      try {
+        mapRef.current.off();
+        mapRef.current.remove();
+      } catch {
+        /* ignore teardown races */
+      }
+      mapRef.current = null;
+    }
+  };
 
   // Sync voice-fill / external parent values into local fields
   useEffect(() => {
@@ -63,6 +91,15 @@ export function LocationPicker({
     externalValues?.zip,
   ]);
 
+  // After research results open: tear down Leaflet so tiles/panes cannot float while scrolling
+  useEffect(() => {
+    if (collapseMap) {
+      destroyMap();
+    }
+  }, [collapseMap]);
+
+  useEffect(() => () => destroyMap(), []);
+
   // Auto-detect current location
   const handleAutoDetect = async () => {
     setLoading(true);
@@ -82,7 +119,7 @@ export function LocationPicker({
         reverseGeocode(latitude, longitude);
         setMapVisible(true);
       },
-      (err) => {
+      () => {
         setError(`Location access denied. Try clicking the map to pick a location.`);
         setMapVisible(true);
         setLoading(false);
@@ -104,44 +141,56 @@ export function LocationPicker({
       setState(addr.state || '');
       setZip(addr.postcode || '');
       setLoading(false);
-    } catch (err) {
+    } catch {
       setError('Could not determine address from coordinates');
       setLoading(false);
     }
   };
 
-  // Initialize map
+  // Initialize map (only when visible and not collapsed by results modal)
   useEffect(() => {
-    if (!mapVisible || !mapContainer.current || mapRef.current) return;
+    if (collapseMap || !mapVisible || !mapContainer.current || mapRef.current) return;
 
-    // Dynamically load Leaflet
     const loadLeaflet = async () => {
       const L = (window as any).L;
       if (!L) {
-        // Load Leaflet CSS
-        const cssLink = document.createElement('link');
-        cssLink.rel = 'stylesheet';
-        cssLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
-        document.head.appendChild(cssLink);
+        if (!document.querySelector('link[data-rg-leaflet]')) {
+          const cssLink = document.createElement('link');
+          cssLink.rel = 'stylesheet';
+          cssLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+          cssLink.setAttribute('data-rg-leaflet', '1');
+          document.head.appendChild(cssLink);
+        }
 
-        // Load Leaflet JS
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
-        script.onload = () => {
-          initializeMap();
-        };
-        document.body.appendChild(script);
+        if (!document.querySelector('script[data-rg-leaflet]')) {
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+          script.setAttribute('data-rg-leaflet', '1');
+          script.onload = () => {
+            initializeMap();
+          };
+          document.body.appendChild(script);
+        } else {
+          const existing = document.querySelector('script[data-rg-leaflet]') as HTMLScriptElement;
+          if ((window as any).L) initializeMap();
+          else existing.addEventListener('load', () => initializeMap(), { once: true });
+        }
       } else {
         initializeMap();
       }
     };
 
     const initializeMap = () => {
+      if (!mapContainer.current || mapRef.current) return;
       const L = (window as any).L;
+      if (!L) return;
       const initialLat = lat || 38.5;
       const initialLng = lng || -96.5;
 
-      const map = L.map(mapContainer.current).setView([initialLat, initialLng], 13);
+      const map = L.map(mapContainer.current, {
+        // Prefer non-CSS-transform path where possible to avoid compositor "float" bugs
+        preferCanvas: true,
+      }).setView([initialLat, initialLng], 13);
       mapRef.current = map;
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -149,52 +198,88 @@ export function LocationPicker({
         maxZoom: 19,
       }).addTo(map);
 
-      // Add marker for current location
       if (lat && lng) {
         L.marker([lat, lng], {
           title: 'Selected Location',
         }).addTo(map);
       }
 
-      // Click to select location
       map.on('click', async (e: any) => {
         const { lat: clickLat, lng: clickLng } = e.latlng;
         setLat(clickLat);
         setLng(clickLng);
 
-        // Clear existing marker
         map.eachLayer((layer: any) => {
           if (layer instanceof L.Marker) {
             map.removeLayer(layer);
           }
         });
 
-        // Add new marker
         L.marker([clickLat, clickLng], {
           title: 'Selected Location',
         }).addTo(map);
 
-        // Reverse geocode
         await reverseGeocode(clickLat, clickLng);
       });
+
+      // Ensure size is correct after layout
+      setTimeout(() => {
+        try {
+          map.invalidateSize();
+        } catch {
+          /* ignore */
+        }
+      }, 100);
     };
 
     loadLeaflet();
-  }, [mapVisible, lat, lng]);
+  }, [mapVisible, lat, lng, collapseMap]);
 
   const handleConfirmLocation = () => {
     if (!address || !city || !state || !zip || lat === null || lng === null) {
       setError('Please select a valid location with ZIP code');
       return;
     }
-    // Pass full address with ZIP code to parent
     const fullAddress = `${address}, ${city}, ${state} ${zip}`;
     onLocationSelect(fullAddress, city, state, zip, lat, lng);
     setLocationConfirmed(true);
   };
 
+  const showMapUi = mapVisible && !collapseMap;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative" style={{ position: 'relative', zIndex: 0, transform: 'none' }}>
+      {/* Pin Leaflet panes inside the shell — never sticky/fixed to the viewport */}
+      <style>{`
+        .rg-location-map-shell,
+        .rg-location-map-shell .leaflet-container {
+          position: relative !important;
+          z-index: 0 !important;
+          overflow: hidden !important;
+          transform: none !important;
+          -webkit-transform: none !important;
+          will-change: auto !important;
+        }
+        .rg-location-map-shell .leaflet-pane,
+        .rg-location-map-shell .leaflet-map-pane,
+        .rg-location-map-shell .leaflet-tile-pane,
+        .rg-location-map-shell .leaflet-overlay-pane,
+        .rg-location-map-shell .leaflet-shadow-pane,
+        .rg-location-map-shell .leaflet-marker-pane,
+        .rg-location-map-shell .leaflet-tooltip-pane,
+        .rg-location-map-shell .leaflet-popup-pane,
+        .rg-location-map-shell .leaflet-top,
+        .rg-location-map-shell .leaflet-bottom,
+        .rg-location-map-shell .leaflet-control {
+          position: absolute !important;
+        }
+        .rg-location-map-shell .leaflet-tile-container img,
+        .rg-location-map-shell .leaflet-tile {
+          position: absolute !important;
+          max-width: none !important;
+        }
+      `}</style>
+
       {/* Manual Entry Toggle */}
       <div className="flex gap-2">
         <button
@@ -292,11 +377,11 @@ export function LocationPicker({
 
       {/* Map / Auto-Detect */}
       {!useManualEntry && (
-        <div className="space-y-4">
+        <div className="space-y-4 relative" style={{ position: 'relative', zIndex: 0 }}>
           <button
             type="button"
             onClick={handleAutoDetect}
-            disabled={disabled || loading}
+            disabled={disabled || loading || collapseMap}
             className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold rounded-lg transition shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             <Navigation className="w-4 h-4" />
@@ -310,11 +395,18 @@ export function LocationPicker({
             </div>
           )}
 
-          {mapVisible && (
-            <div className="space-y-4">
+          {collapseMap && locationConfirmed && (
+            <div className="text-center text-green-400 font-bold text-sm">
+              ✓ Location confirmed — map hidden while results are open
+            </div>
+          )}
+
+          {showMapUi && (
+            <div className="space-y-4 relative" style={{ position: 'relative', zIndex: 0 }}>
               <div
                 ref={mapContainer}
-                className="w-full h-80 rounded-lg border border-purple-500/30 bg-slate-700"
+                className="rg-location-map-shell w-full h-80 rounded-lg border border-purple-500/30 bg-slate-700"
+                style={MAP_SHELL_STYLE}
               />
               <p className="text-gray-400 text-sm text-center">Click on the map to select your location</p>
 

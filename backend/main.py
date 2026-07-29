@@ -3115,6 +3115,9 @@ async def send_result_email_standalone(
             err = result.get("error", "Failed to send email")
             if "rate limit" in str(err).lower():
                 raise HTTPException(status_code=429, detail=str(err))
+            # Clear signal for frontend mailto fallback when Resend/SendGrid missing
+            if "not configured" in str(err).lower() or "resend" in str(err).lower():
+                raise HTTPException(status_code=503, detail=str(err))
             raise HTTPException(status_code=400, detail=err)
 
         return {
@@ -3214,6 +3217,8 @@ async def send_result_email(
             err = result.get("error", "Failed to send email")
             if "rate limit" in str(err).lower():
                 raise HTTPException(status_code=429, detail=str(err))
+            if "not configured" in str(err).lower() or "resend" in str(err).lower():
+                raise HTTPException(status_code=503, detail=str(err))
             raise HTTPException(status_code=400, detail=err)
 
         return {

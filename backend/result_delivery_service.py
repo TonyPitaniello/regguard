@@ -308,7 +308,9 @@ class ResultDeliveryService:
                 raise ValueError("Invalid email format")
 
             if not self.email_service:
-                raise Exception("Email service not configured")
+                raise Exception(
+                    "Email service not configured. Set RESEND_API_KEY or SENDGRID_API_KEY on the server."
+                )
 
             # Send email
             result = await self.email_service.send_research_result(email_address, research_data)

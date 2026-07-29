@@ -241,6 +241,7 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
           <LocationPicker
             onLocationSelect={handleLocationSelect}
             disabled={loading}
+            collapseMap={resultsOpen}
             externalValues={externalLocation}
           />
 

@@ -1,6 +1,7 @@
 /**
  * Dual phone + email send form for research results.
- * Uses API when available; optional native sms:/mailto: only via explicit secondary buttons.
+ * Email: try API first, then auto-fallback to mailto so delivery always works.
+ * SMS: try Twilio API; on failure show clear message + "Open in Messages" (no auto-open).
  */
 
 import { useState, useEffect } from 'react';
@@ -55,7 +56,6 @@ export default function SendResultsForm({
   const [emailSuccess, setEmailSuccess] = useState('');
   const [error, setError] = useState('');
   const [showSmsNativeFallback, setShowSmsNativeFallback] = useState(false);
-  const [showEmailNativeFallback, setShowEmailNativeFallback] = useState(false);
 
   // Keep defaults in sync when voice fill lands after mount
   useEffect(() => {
@@ -132,12 +132,12 @@ export default function SendResultsForm({
         return;
       }
       setError(
-        'Text could not be sent (Twilio may be offline). Use “Open in Messages” below, or copy share text.',
+        'Text could not be sent (Twilio may be offline). Use “Open in Messages” below, or share via WhatsApp.',
       );
       setShowSmsNativeFallback(true);
     } catch {
       setError(
-        'Text could not be sent (Twilio may be offline). Use “Open in Messages” below, or copy share text.',
+        'Text could not be sent (Twilio may be offline). Use “Open in Messages” below, or share via WhatsApp.',
       );
       setShowSmsNativeFallback(true);
     } finally {
@@ -148,7 +148,6 @@ export default function SendResultsForm({
   const handleSendEmail = async () => {
     setError('');
     setEmailSuccess('');
-    setShowEmailNativeFallback(false);
     if (!email || !validateEmail(email)) {
       setError('Please enter a valid email address');
       return;
@@ -176,15 +175,12 @@ export default function SendResultsForm({
         setEmailSuccess(`Email sent to ${email}`);
         return;
       }
-      setError(
-        'Email could not be sent. Use “Open email app” below, or copy share text.',
-      );
-      setShowEmailNativeFallback(true);
+      // Server email (Resend/SendGrid) unavailable — auto-open mailto so users can still send
+      openNativeEmail(email);
+      setEmailSuccess(`Opening your email app for ${email}…`);
     } catch {
-      setError(
-        'Email could not be sent. Use “Open email app” below, or copy share text.',
-      );
-      setShowEmailNativeFallback(true);
+      openNativeEmail(email);
+      setEmailSuccess(`Opening your email app for ${email}…`);
     } finally {
       setLoadingEmail(false);
     }
@@ -288,15 +284,6 @@ export default function SendResultsForm({
             Email me
           </button>
         </div>
-        {showEmailNativeFallback && email && validateEmail(email) && (
-          <button
-            type="button"
-            onClick={() => openNativeEmail(email)}
-            className="w-full sm:w-auto px-4 py-2 text-sm font-semibold text-blue-300 border border-blue-500/40 rounded-lg hover:bg-blue-500/10 transition"
-          >
-            Open email app
-          </button>
-        )}
       </div>
     </div>
   );
