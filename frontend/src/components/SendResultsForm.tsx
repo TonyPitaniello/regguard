@@ -1,10 +1,10 @@
 /**
  * Dual phone + email send form for research results.
- * Works with free-trial summaries (no DB research_id) via /research/send-sms|send-email.
+ * Uses API when available; falls back to native sms:/mailto: so Text always works.
  */
 
 import { useState } from 'react';
-import { AlertCircle, CheckCircle, Loader, Mail, Phone } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader, Mail, Phone, MessageSquare } from 'lucide-react';
 import { backendUrl } from '../env';
 
 export interface ResultsSummaryPayload {
@@ -25,12 +25,25 @@ interface SendResultsFormProps {
   compact?: boolean;
 }
 
+function buildTextBody(summary: ResultsSummaryPayload): string {
+  const lines = [
+    'RegGuard Site Diligence Summary',
+    summary.address ? `Site: ${summary.address}` : '',
+    [summary.city, summary.state, summary.zip].filter(Boolean).join(', '),
+    summary.risk_level ? `Risk: ${summary.risk_level}` : '',
+    summary.timeline ? `Timeline: ${summary.timeline}` : '',
+    summary.cost != null ? `Est. cost: $${Number(summary.cost).toLocaleString()}` : '',
+    '',
+    'View full app: https://app.regguardagent.com/',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
 export default function SendResultsForm({
   researchId,
   summary,
   userId,
   defaultEmail = '',
-  compact = false,
 }: SendResultsFormProps) {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState(defaultEmail);
@@ -48,8 +61,10 @@ export default function SendResultsForm({
   const validateEmail = (value: string): boolean =>
     /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value);
 
+  const digitsOnly = (value: string) => value.replace(/\D/g, '').slice(-10);
+
   const formatPhoneDisplay = (value: string): string => {
-    const digits = value.replace(/\D/g, '').slice(-10);
+    const digits = digitsOnly(value);
     return `+1-${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
   };
 
@@ -60,6 +75,18 @@ export default function SendResultsForm({
     ...(researchId ? { research_id: researchId } : {}),
   });
 
+  const openNativeSms = (phoneValue: string) => {
+    const digits = digitsOnly(phoneValue);
+    const body = encodeURIComponent(buildTextBody(summary));
+    window.location.href = `sms:+1${digits}?&body=${body}`;
+  };
+
+  const openNativeEmail = (emailValue: string) => {
+    const subject = encodeURIComponent('RegGuard Site Diligence Results');
+    const body = encodeURIComponent(buildTextBody(summary));
+    window.location.href = `mailto:${emailValue}?subject=${subject}&body=${body}`;
+  };
+
   const handleSendSms = async () => {
     setError('');
     setSmsSuccess('');
@@ -69,24 +96,22 @@ export default function SendResultsForm({
     }
     setLoadingSms(true);
     try {
-      const path = researchId
-        ? `/research/${researchId}/send-sms`
-        : '/research/send-sms';
+      const path = researchId ? `/research/${researchId}/send-sms` : '/research/send-sms';
       const response = await fetch(backendUrl(path), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildBody({ phone_number: phone })),
       });
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data.detail || 'Failed to send SMS');
+      if (response.ok) {
+        setSmsSuccess(`Text sent to ${formatPhoneDisplay(phone)}`);
+        setPhone('');
         return;
       }
-      setSmsSuccess(`Sent to ${formatPhoneDisplay(phone)}`);
-      setPhone('');
-    } catch (err) {
-      console.error(err);
-      setError('Network error. Please try again.');
+      openNativeSms(phone);
+      setSmsSuccess(`Opening Messages to text ${formatPhoneDisplay(phone)}…`);
+    } catch {
+      openNativeSms(phone);
+      setSmsSuccess(`Opening Messages to text ${formatPhoneDisplay(phone)}…`);
     } finally {
       setLoadingSms(false);
     }
@@ -101,35 +126,34 @@ export default function SendResultsForm({
     }
     setLoadingEmail(true);
     try {
-      const path = researchId
-        ? `/research/${researchId}/send-email`
-        : '/research/send-email';
+      const path = researchId ? `/research/${researchId}/send-email` : '/research/send-email';
       const response = await fetch(backendUrl(path), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          buildBody({ email: email, email_address: email })
-        ),
+        body: JSON.stringify(buildBody({ email, email_address: email })),
       });
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data.detail || 'Failed to send email');
+      if (response.ok) {
+        setEmailSuccess(`Email sent to ${email}`);
         return;
       }
-      setEmailSuccess(`Sent to ${email}`);
-    } catch (err) {
-      console.error(err);
-      setError('Network error. Please try again.');
+      openNativeEmail(email);
+      setEmailSuccess(`Opening your email app for ${email}…`);
+    } catch {
+      openNativeEmail(email);
+      setEmailSuccess(`Opening your email app for ${email}…`);
     } finally {
       setLoadingEmail(false);
     }
   };
 
   return (
-    <div className={compact ? 'space-y-4' : 'space-y-5'}>
-      <h3 className="text-lg font-bold text-white">Send these results</h3>
-      <p className="text-sm text-gray-400">
-        Text or email a summary to yourself — both options are available.
+    <div className="space-y-4 rounded-xl border-2 border-emerald-500/40 bg-emerald-500/10 p-4 sm:p-5">
+      <div className="flex items-center gap-2">
+        <MessageSquare className="w-5 h-5 text-emerald-400" />
+        <h3 className="text-lg font-black text-white">Text or email these results</h3>
+      </div>
+      <p className="text-sm text-gray-300">
+        Enter a phone number to text a summary, or an email — both work from this window.
       </p>
 
       {error && (
@@ -156,57 +180,60 @@ export default function SendResultsForm({
         </div>
       )}
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label htmlFor="send-phone" className="block text-sm font-semibold text-gray-300">
-            Phone number
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="send-phone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+1 (555) 123-4567"
-              disabled={loadingSms}
-              className="flex-1 px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
-            />
-            <button
-              type="button"
-              onClick={handleSendSms}
-              disabled={loadingSms}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
-            >
-              {loadingSms ? <Loader className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />}
-              Text me
-            </button>
-          </div>
+      <div className="space-y-2 rounded-lg border border-emerald-500/50 bg-slate-900/60 p-4">
+        <label htmlFor="send-phone" className="flex items-center gap-2 text-base font-bold text-emerald-300">
+          <Phone className="w-4 h-4" />
+          Text results (SMS)
+        </label>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            id="send-phone"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="(555) 123-4567"
+            disabled={loadingSms}
+            className="flex-1 px-4 py-3 bg-slate-800 border border-emerald-500/40 rounded-lg text-white text-base placeholder-gray-500 focus:outline-none focus:border-emerald-400"
+          />
+          <button
+            type="button"
+            onClick={handleSendSms}
+            disabled={loadingSms}
+            className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2 whitespace-nowrap text-base"
+          >
+            {loadingSms ? <Loader className="w-5 h-5 animate-spin" /> : <Phone className="w-5 h-5" />}
+            Text me
+          </button>
         </div>
+      </div>
 
-        <div className="space-y-2">
-          <label htmlFor="send-email" className="block text-sm font-semibold text-gray-300">
-            Email
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="send-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.com"
-              disabled={loadingEmail}
-              className="flex-1 px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-            />
-            <button
-              type="button"
-              onClick={handleSendEmail}
-              disabled={loadingEmail}
-              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
-            >
-              {loadingEmail ? <Loader className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-              Email me
-            </button>
-          </div>
+      <div className="space-y-2 rounded-lg border border-blue-500/40 bg-slate-900/60 p-4">
+        <label htmlFor="send-email" className="flex items-center gap-2 text-base font-bold text-blue-300">
+          <Mail className="w-4 h-4" />
+          Email results
+        </label>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            id="send-email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            disabled={loadingEmail}
+            className="flex-1 px-4 py-3 bg-slate-800 border border-blue-500/40 rounded-lg text-white text-base placeholder-gray-500 focus:outline-none focus:border-blue-400"
+          />
+          <button
+            type="button"
+            onClick={handleSendEmail}
+            disabled={loadingEmail}
+            className="px-6 py-3 bg-blue-500 hover:bg-blue-400 text-white font-black rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2 whitespace-nowrap text-base"
+          >
+            {loadingEmail ? <Loader className="w-5 h-5 animate-spin" /> : <Mail className="w-5 h-5" />}
+            Email me
+          </button>
         </div>
       </div>
     </div>

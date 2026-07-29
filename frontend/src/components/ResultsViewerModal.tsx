@@ -160,6 +160,15 @@ export default function ResultsViewerModal({
           </button>
         </div>
 
+        {/* Text / Email FIRST — always visible without scrolling */}
+        <div className="px-5 sm:px-8 py-4 border-b border-emerald-500/30 bg-slate-950/90 shrink-0">
+          <SendResultsForm
+            researchId={effectiveResearchId}
+            summary={summary}
+            defaultEmail={defaultEmail}
+          />
+        </div>
+
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-5 sm:px-8 py-6 space-y-6">
           {/* Summary cards */}
@@ -303,16 +312,6 @@ export default function ResultsViewerModal({
               </p>
             </div>
           </div>
-        </div>
-
-        {/* Sticky footer: send results */}
-        <div className="border-t border-slate-700 bg-slate-900/95 px-5 sm:px-8 py-5">
-          <SendResultsForm
-            researchId={effectiveResearchId}
-            summary={summary}
-            defaultEmail={defaultEmail}
-            compact
-          />
         </div>
       </div>
     </div>
