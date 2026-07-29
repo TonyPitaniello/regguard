@@ -9,7 +9,8 @@ import './voice-command.css';
 import './onboarding-system.css';
 import './mobile-optimizations.css'; // Mobile performance optimization
 
-// Load Google Maps API before rendering
-loadGoogleMapsApi().catch(err => console.error('Failed to load Google Maps:', err));
-
+// Render app immediately (don't block on Google Maps)
 createRoot(document.getElementById('root')!).render(<AppRouter />);
+
+// Load Google Maps API in background (non-blocking)
+loadGoogleMapsApi().catch(err => console.warn('Google Maps failed (non-blocking):', err));

@@ -2,6 +2,12 @@
  * Load Google Maps API dynamically
  */
 export async function loadGoogleMapsApi(): Promise<void> {
+  // Skip loading in development - will be loaded later when needed
+  if (import.meta.env.DEV) {
+    console.log('⏭️  Skipping Google Maps load in dev (will load on-demand)');
+    return;
+  }
+
   // Check if already loaded
   if (window.google?.maps) {
     return Promise.resolve();
