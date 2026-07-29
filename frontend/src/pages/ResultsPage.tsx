@@ -5,7 +5,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertCircle, Download, ChevronDown, ChevronUp, Share2 } from 'lucide-react';
+import ShareResultsModal from '../components/ShareResultsModal';
 
 interface AnalysisData {
   timestamp: string;
@@ -64,6 +65,10 @@ export default function ResultsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [shareModal, setShareModal] = useState<{ isOpen: boolean; method: 'sms' | 'email' }>({
+    isOpen: false,
+    method: 'sms',
+  });
 
   useEffect(() => {
     // Load analysis from session storage or route params
@@ -382,6 +387,34 @@ export default function ResultsPage() {
           </button>
         </div>
 
+        {/* Share & Save Result */}
+        <section className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-6 mb-8">
+          <h2 className="text-lg font-bold text-white mb-4">💾 Save & Share Result</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button
+              onClick={() => setShareModal({ isOpen: true, method: 'sms' })}
+              className="bg-gradient-to-r from-blue-600/80 to-blue-700/80 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition flex items-center justify-center gap-2 border border-blue-500/50"
+            >
+              <span>📱</span>
+              Text This Result
+            </button>
+            <button
+              onClick={() => setShareModal({ isOpen: true, method: 'email' })}
+              className="bg-gradient-to-r from-indigo-600/80 to-indigo-700/80 hover:from-indigo-600 hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition flex items-center justify-center gap-2 border border-indigo-500/50"
+            >
+              <span>📧</span>
+              Email This Result
+            </button>
+            <button
+              onClick={downloadResults}
+              className="bg-gradient-to-r from-purple-600/80 to-purple-700/80 hover:from-purple-600 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition flex items-center justify-center gap-2 border border-purple-500/50"
+            >
+              <Download size={18} />
+              Download PDF
+            </button>
+          </div>
+        </section>
+
         {/* Actions */}
         <div className="flex gap-4 justify-center">
           <button
@@ -398,6 +431,17 @@ export default function ResultsPage() {
             Print Results
           </button>
         </div>
+
+        {/* Share Modal */}
+        <ShareResultsModal
+          isOpen={shareModal.isOpen}
+          onClose={() => setShareModal({ isOpen: false, method: 'sms' })}
+          deliveryMethod={shareModal.method}
+          researchId="research-123"
+          onSuccess={(result) => {
+            console.log('Result shared successfully:', result);
+          }}
+        />
       </div>
     </div>
   );

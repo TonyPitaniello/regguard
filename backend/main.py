@@ -2899,6 +2899,151 @@ async def list_data_center_leads(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==========================================
+# RESULT DELIVERY ENDPOINTS (SMS & EMAIL)
+# ==========================================
+
+@app.post("/research/{research_id}/send-sms", tags=["Results"])
+async def send_result_sms(
+    request: Request,
+    research_id: str,
+    phone_number: str = Body(..., embed=True),
+) -> Dict[str, Any]:
+    """
+    Send research result via SMS (Twilio).
+    
+    Request body:
+    ```json
+    {
+        "phone_number": "+1-XXX-XXX-XXXX" or "XXXXXXXXXX"
+    }
+    ```
+    
+    Response:
+    ```json
+    {
+        "status": "sent" | "failed",
+        "message_id": "SMxxxxxxxx...",
+        "phone": "+1XXXXXXXXXX",
+        "delivery_id": "uuid",
+        "error": "..." (if failed)
+    }
+    ```
+    """
+    try:
+        # Get user context (would need auth middleware)
+        user_id = request.headers.get("X-User-ID") or "anonymous"
+
+        # Get research result from session or database
+        # For now, using a mock structure - in production, fetch from DB
+        research_data = _get_research_data(research_id)
+
+        if not research_data:
+            raise HTTPException(status_code=404, detail="Research result not found")
+
+        # Send SMS
+        from result_delivery_service import get_delivery_service
+        delivery_service = get_delivery_service(db_pool=None)
+
+        result = await delivery_service.send_sms(
+            phone_number=phone_number,
+            research_data=research_data,
+            user_id=user_id,
+            research_id=research_id,
+        )
+
+        if result["status"] == "failed":
+            raise HTTPException(status_code=400, detail=result.get("error", "Failed to send SMS"))
+
+        return {
+            "status": "sent",
+            "message_id": result.get("message_id"),
+            "phone": result.get("phone"),
+            "delivery_id": result.get("delivery_id"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending SMS: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send SMS: {str(e)}")
+
+
+@app.post("/research/{research_id}/send-email", tags=["Results"])
+async def send_result_email(
+    request: Request,
+    research_id: str,
+    email_address: str = Body(..., embed=True),
+) -> Dict[str, Any]:
+    """
+    Send research result via email (SendGrid/Resend).
+    
+    Request body:
+    ```json
+    {
+        "email_address": "user@example.com"
+    }
+    ```
+    
+    Response:
+    ```json
+    {
+        "status": "sent" | "failed",
+        "email_id": "...",
+        "email": "user@example.com",
+        "delivery_id": "uuid",
+        "error": "..." (if failed)
+    }
+    ```
+    """
+    try:
+        # Get user context
+        user_id = request.headers.get("X-User-ID") or "anonymous"
+
+        # Get research result
+        research_data = _get_research_data(research_id)
+
+        if not research_data:
+            raise HTTPException(status_code=404, detail="Research result not found")
+
+        # Send email
+        from result_delivery_service import get_delivery_service
+        delivery_service = get_delivery_service(db_pool=None)
+
+        result = await delivery_service.send_email(
+            email_address=email_address,
+            research_data=research_data,
+            user_id=user_id,
+            research_id=research_id,
+        )
+
+        if result["status"] == "failed":
+            raise HTTPException(status_code=400, detail=result.get("error", "Failed to send email"))
+
+        return {
+            "status": "sent",
+            "email_id": result.get("email_id"),
+            "email": result.get("email"),
+            "delivery_id": result.get("delivery_id"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+
+
+def _get_research_data(research_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch research data by ID.
+    In production, this would query the database.
+    For now, returns mock data or None.
+    """
+    # TODO: Implement database query
+    return None
+
+
 def _running_on_vercel() -> bool:
     return bool(
         os.environ.get("VERCEL")
