@@ -198,6 +198,15 @@
   font-weight: 700;
 }
 
+.voice-chip-tip {
+  background: rgba(14, 116, 144, 0.4);
+  border-color: rgba(34, 211, 238, 0.45);
+  color: #cffafe;
+  white-space: normal;
+  line-height: 1.35;
+  border-radius: 12px;
+}
+
 .voice-error {
   padding: 8px 12px;
   background: rgba(239, 68, 68, 0.18);

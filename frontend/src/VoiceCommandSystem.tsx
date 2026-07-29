@@ -13,6 +13,7 @@ import {
 import {
   dispatchVoiceFill,
   dispatchVoiceSubmit,
+  needsSpokenEmailTip,
   parseVoiceTrialTranscript,
   voiceFieldsReady,
   type VoiceFillFields,
@@ -274,7 +275,7 @@ export function VoiceCommandSystem() {
             {interimTranscript && <p className="interim-text">{interimTranscript}</p>}
             {!transcript && isListening && (
               <p className="interim-text">
-                “123 Main Street in Austin Texas 78701, email me at you@company.com”
+                “123 Main Street suite 400 in Austin Texas 78701, email jane at gmail dot com”
               </p>
             )}
           </div>
@@ -286,6 +287,14 @@ export function VoiceCommandSystem() {
                   <strong>{c.label}</strong> {c.value}
                 </span>
               ))}
+            </div>
+          )}
+
+          {showConfirm && parsed && needsSpokenEmailTip(parsed) && (
+            <div className="voice-chips">
+              <span className="voice-chip voice-chip-tip" role="note">
+                Tip: Say email like: jane at gmail dot com
+              </span>
             </div>
           )}
 

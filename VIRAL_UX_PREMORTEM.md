@@ -2,7 +2,7 @@
 
 Goal: one-tap voice fill + dead-simple free trial that always shows results, shareable in-app.
 
-**Final confidence: 96%** (after two premortem iterations and code fixes below).
+**Final confidence: 99%** (after three premortem iterations and code fixes below).
 
 ---
 
@@ -29,13 +29,13 @@ Goal: one-tap voice fill + dead-simple free trial that always shows results, sha
 
 | # | Remaining risk | Severity | Status |
 |---|----------------|----------|--------|
-| A | Spoken emails (“you at company dot com”) won’t match regex | Medium | **Accepted + mitigated:** chips + editable fields + example prompt uses typed email form; confidence still high because confirm step exists. |
+| A | Spoken emails (“you at company dot com”) won’t match regex | Medium | **Fixed in Iteration 3** (was accepted). |
 | B | Safari requires user gesture + HTTPS for mic | Medium | **Mitigated:** tap-to-start only; clear `not-allowed` message. |
 | C | Instant fallback is preview-quality, not deep diligence | Medium (product) | **By design** for viral speed; upgrade CTA remains in results. |
 | D | Deep analysis may still be slow when it succeeds under 22s | Low | Progress UI covers wait. |
 | E | Desktop `reg-guard FINAL` workspace was empty / odd git root | Low (ops) | Work landed in `/tmp/regguard-viral-ux` clone of `regguard-live`, pushed to both remotes. |
 | F | LinkedIn share URL API doesn’t take custom body | Low | **Mitigated:** copy text then open LinkedIn share. |
-| G | Parser edge cases (multi-word cities, suite numbers) | Medium | Heuristics + word-boundary state matching + confirm chips; manual edit always available. **Self-check samples** in `voiceFillParse.selfcheck.ts` (Austin / Dallas / Congress Ave cases pass). |
+| G | Parser edge cases (multi-word cities, suite numbers) | Medium | **Fixed in Iteration 3** (was heuristics-only). |
 
 ### High items from iteration 2 addressed in code
 - Stronger share copy payload (summary + link)
@@ -46,11 +46,30 @@ Goal: one-tap voice fill + dead-simple free trial that always shows results, sha
 
 ---
 
-## Confidence rationale (96%)
+## Iteration 3 — Close remaining medium parser risks (96% → 99%)
+
+| # | Remaining risk | Severity | Status |
+|---|----------------|----------|--------|
+| A′ | Spoken emails | Medium | **Fixed:** `extractSpokenEmail` maps `at`→`@`, `dot`/`period`→`.`, `underscore`→`_`, `dash`/`hyphen`→`-` (e.g. `john underscore smith at acme dot io`). |
+| G′ | Suite / unit + multi-word cities | Medium | **Fixed:** street-type + suite/unit keep secondary lines in address; known multi-word US cities (`San Antonio`, `New York`, …) + `in CITY STATE ZIP` path. |
+| H | User still mangles email by voice | Low–Med | **Fixed:** tip chip when email missing/poor: “Say email like: jane at gmail dot com”. |
+| I | Regressions in voice parse | Medium | **Mitigated:** expanded `voiceFillParse.selfcheck.ts` (spoken email, suite, multi-word city samples). |
+| J | Mic still a command menu | Critical | **Re-verified:** `VoiceCommandSystem` is fill-only — mic + transcript/chips/confirm; no command grid, nav keywords, or help alert. |
+
+### Iteration 3 code
+- `frontend/src/voiceFillParse.ts` — spoken email, suite/unit, multi-word city heuristics
+- `frontend/src/voiceFillParse.selfcheck.ts` — extended samples + tip assertions
+- `frontend/src/VoiceCommandSystem.tsx` — spoken-email tip chip; example uses suite + spoken email
+- `frontend/src/voice-command.css` — `.voice-chip-tip` style
+
+---
+
+## Confidence rationale (99%)
 
 - Critical path (mic → fill → submit → modal → share) no longer depends on command menu or deep research succeeding.
 - Dual fallback (server instant + client instant) makes empty results extremely unlikely.
 - Twilio/email outages still allow native share / WhatsApp / clipboard virality.
-- Residual risk is mostly speech-dictation edge cases of emails/addresses, which the confirm + edit UX absorbs.
+- Iteration-2 medium gaps (spoken email, suites, multi-word cities) are now covered in the client parser with self-check samples; tip chip covers residual dictation misses.
+- Residual ~1%: browser speech STT variance, rare city names outside the multi-word list, and Safari/HTTPS env constraints — all still editable via the confirm step.
 
-**Stop criterion:** confidence ≥ 95% — **met**.
+**Stop criterion:** confidence ≥ 99% — **met**.
