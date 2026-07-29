@@ -53,12 +53,17 @@ export function AppRouter() {
 
           {/* Methodology & Trust */}
           <Route path="/methodology" element={<MethodologyPage />} />
+          <Route path="/how-it-works" element={<MethodologyPage />} />
 
           {/* Free Trial */}
           <Route path="/free-trial" element={<FreeTrialPage />} />
           <Route path="/results" element={<ResultsPage />} />
+          
+          {/* Orders and Payment */}
+          <Route path="/order" element={<PremiumCheckoutPage />} />
           <Route path="/checkout/:tier" element={<PremiumCheckoutPage />} />
           <Route path="/checkout" element={<PremiumCheckoutPage />} />
+          <Route path="/checkout/success" element={<OrdersPage />} />
           <Route path="/orders" element={<OrdersPage />} />
 
           {/* Sample Report */}

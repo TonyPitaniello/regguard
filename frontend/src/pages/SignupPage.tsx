@@ -114,10 +114,16 @@ export default function SignupPage() {
       );
 
       if (response.data.success || response.status === 200) {
-        setSuccess(true);
-        setTimeout(() => {
-          navigate('/agent');
-        }, 2000);
+        // If checkout URL is provided, redirect to Stripe
+        if (response.data.checkout_url) {
+          window.location.href = response.data.checkout_url;
+        } else {
+          // Otherwise show success and redirect to dashboard
+          setSuccess(true);
+          setTimeout(() => {
+            navigate('/');
+          }, 2000);
+        }
       } else {
         setError(response.data.message || 'Signup failed');
       }
