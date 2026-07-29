@@ -1288,7 +1288,8 @@ async def test_supabase() -> Dict[str, Any]:
 async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
     """
     Free trial: create trial record, return IMMEDIATE analysis for in-app modal,
-    and queue email in background.
+    and queue email in background. Never blocks the UI on email/DB failure.
+    Always returns analysis_data (instant fallback if deep screen fails/times out).
     """
     from free_trial_handler import handle_free_trial
     from option_a_integration import run_option_a_analysis
@@ -1304,10 +1305,13 @@ async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
         response = await handle_free_trial(request_body)
         trial_id = response.trial_id or ""
         if response.status == "error" and not trial_id:
-            logger.warning(f"Trial record issue: {response.message}")
+            logger.warning(f"Trial record issue (non-blocking): {response.message}")
+            # Keep success path for UI — email record failure must not stop results
+            status = "success"
+            message = "Analysis ready — results are displayed in the app."
         else:
             message = response.message or message
-            status = response.status or status
+            status = "success"
     except Exception as trial_err:
         logger.error(f"handle_free_trial failed (continuing with analysis): {trial_err}")
 
@@ -1316,17 +1320,23 @@ async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
     try:
         profile = geocode_profile_from_address(request_body.address)
         if profile:
-            analysis = await run_option_a_analysis(
-                address=request_body.address,
-                city=profile.city,
-                state=profile.state_short,
-                zip_code=profile.zip5,
-                latitude=profile.latitude,
-                longitude=profile.longitude,
-                project_type=request_body.project_type,
+            analysis = await asyncio.wait_for(
+                run_option_a_analysis(
+                    address=request_body.address,
+                    city=profile.city,
+                    state=profile.state_short,
+                    zip_code=profile.zip5,
+                    latitude=profile.latitude,
+                    longitude=profile.longitude,
+                    project_type=request_body.project_type,
+                ),
+                timeout=22.0,
             )
             message = "Analysis ready — results are displayed in the app."
             status = "success"
+    except asyncio.TimeoutError:
+        logger.warning("Deep analysis timed out — using instant fallback")
+        analysis = None
     except Exception as analysis_error:
         logger.error(f"Deep analysis failed, using instant fallback: {analysis_error}")
         logger.error(traceback.format_exc())
@@ -1340,6 +1350,14 @@ async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
         )
         message = "Instant preview ready in the app. Deeper research continues in the background."
         status = "success"
+
+    # Absolute guarantee: never return without analysis_data
+    if not analysis or not isinstance(analysis, dict):
+        analysis = build_instant_fallback_analysis(
+            address=request_body.address,
+            project_type=request_body.project_type,
+            zip_code=getattr(request_body, "zip", None) or "",
+        )
 
     return {
         "trial_id": trial_id,
@@ -3047,7 +3065,10 @@ async def send_result_sms_standalone(
         )
 
         if result["status"] == "failed":
-            raise HTTPException(status_code=400, detail=result.get("error", "Failed to send SMS"))
+            err = result.get("error", "Failed to send SMS")
+            if "rate limit" in str(err).lower():
+                raise HTTPException(status_code=429, detail=str(err))
+            raise HTTPException(status_code=400, detail=err)
 
         return {
             "status": "sent",
@@ -3091,7 +3112,10 @@ async def send_result_email_standalone(
         )
 
         if result["status"] == "failed":
-            raise HTTPException(status_code=400, detail=result.get("error", "Failed to send email"))
+            err = result.get("error", "Failed to send email")
+            if "rate limit" in str(err).lower():
+                raise HTTPException(status_code=429, detail=str(err))
+            raise HTTPException(status_code=400, detail=err)
 
         return {
             "status": "sent",
@@ -3137,7 +3161,10 @@ async def send_result_sms(
         )
 
         if result["status"] == "failed":
-            raise HTTPException(status_code=400, detail=result.get("error", "Failed to send SMS"))
+            err = result.get("error", "Failed to send SMS")
+            if "rate limit" in str(err).lower():
+                raise HTTPException(status_code=429, detail=str(err))
+            raise HTTPException(status_code=400, detail=err)
 
         return {
             "status": "sent",
@@ -3184,7 +3211,10 @@ async def send_result_email(
         )
 
         if result["status"] == "failed":
-            raise HTTPException(status_code=400, detail=result.get("error", "Failed to send email"))
+            err = result.get("error", "Failed to send email")
+            if "rate limit" in str(err).lower():
+                raise HTTPException(status_code=429, detail=str(err))
+            raise HTTPException(status_code=400, detail=err)
 
         return {
             "status": "sent",

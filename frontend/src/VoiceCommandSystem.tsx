@@ -1,59 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Volume2, AlertCircle } from 'lucide-react';
+/**
+ * Voice fill mode — one-tap mic fills the free-trial form.
+ * NO command menu / NO navigation command list.
+ */
 
-// Declare global Web Speech API types
-declare global {
-  interface Window {
-    SpeechRecognition?: new () => SpeechRecognitionAPI;
-    webkitSpeechRecognition?: new () => SpeechRecognitionAPI;
-  }
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Mic, MicOff, AlertCircle, CheckCircle2 } from 'lucide-react';
+import {
+  clearDictationSilenceTimer,
+  scheduleDictationSilenceStop,
+  type SilenceTimerHandle,
+} from './speech-recognition';
+import {
+  dispatchVoiceFill,
+  dispatchVoiceSubmit,
+  parseVoiceTrialTranscript,
+  voiceFieldsReady,
+  type VoiceFillFields,
+} from './voiceFillParse';
 
-  interface SpeechRecognitionAPI {
-    continuous: boolean;
-    interimResults: boolean;
-    language: string;
-    onstart: (() => void) | null;
-    onresult: ((event: SpeechRecognitionEvent) => void) | null;
-    onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
-    onend: (() => void) | null;
-    start(): void;
-    stop(): void;
-    abort(): void;
-  }
+type SpeechRec = SpeechRecognition;
 
-  interface SpeechRecognitionEvent {
-    results: SpeechRecognitionResultList;
-    isFinal: boolean;
-  }
-
-  interface SpeechRecognitionResultList {
-    length: number;
-    item(index: number): SpeechRecognitionResult;
-    [index: number]: SpeechRecognitionResult;
-  }
-
-  interface SpeechRecognitionResult {
-    isFinal: boolean;
-    length: number;
-    item(index: number): SpeechRecognitionAlternative;
-    [index: number]: SpeechRecognitionAlternative;
-  }
-
-  interface SpeechRecognitionAlternative {
-    transcript: string;
-    confidence: number;
-  }
-
-  interface SpeechRecognitionErrorEvent {
-    error: string;
-  }
+function getSpeechRecognitionCtor(): (new () => SpeechRec) | null {
+  if (typeof window === 'undefined') return null;
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-interface Command {
-  keywords: string[];
-  action: (transcript: string) => void;
-  description: string;
-  icon: string;
+function formatPhoneChip(digits: string): string {
+  if (digits.length !== 10) return digits;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
 export function VoiceCommandSystem() {
@@ -62,321 +36,288 @@ export function VoiceCommandSystem() {
   const [interimTranscript, setInterimTranscript] = useState('');
   const [isSupported, setIsSupported] = useState(false);
   const [error, setError] = useState('');
-  const [commandHistory, setCommandHistory] = useState<string[]>([]);
-  const [persistentMode, setPersistentMode] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionAPI | null>(null);
-  const persistentRef = useRef(false);
+  const [parsed, setParsed] = useState<VoiceFillFields | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [unsupportedHint, setUnsupportedHint] = useState(false);
 
-  // Fuzzy matching for better command recognition
-  function calculateSimilarity(str1: string, str2: string): number {
-    const longer = str1.length > str2.length ? str1 : str2;
-    const shorter = str1.length > str2.length ? str2 : str1;
-    
-    if (longer.length === 0) return 100;
-    
-    const editDistance = getEditDistance(longer, shorter);
-    return ((longer.length - editDistance) / longer.length) * 100;
-  }
+  const recognitionRef = useRef<SpeechRec | null>(null);
+  const silenceTimerRef = useRef<SilenceTimerHandle>(null);
+  const listeningRef = useRef(false);
+  const finalBufferRef = useRef('');
 
-  function getEditDistance(s1: string, s2: string): number {
-    const costs = [];
-    for (let i = 0; i <= s1.length; i++) {
-      let lastValue = i;
-      for (let j = 0; j <= s2.length; j++) {
-        if (i === 0) {
-          costs[j] = j;
-        } else if (j > 0) {
-          let newValue = costs[j - 1];
-          if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
-            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
-          }
-          costs[j - 1] = lastValue;
-          lastValue = newValue;
-        }
-      }
-      if (i > 0) costs[s2.length] = lastValue;
+  const applyTranscript = useCallback((text: string, finalize: boolean) => {
+    const fields = parseVoiceTrialTranscript(text);
+    setParsed(fields);
+    dispatchVoiceFill(fields);
+    if (finalize) {
+      setShowConfirm(true);
+      document.getElementById('free-trial-form')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
     }
-    return costs[s2.length];
-  }
-
-  // Command definitions (moved before useEffect so they can be used in callbacks)
-  const commands: Command[] = [
-    {
-      keywords: ['go to home', 'home', 'dashboard'],
-      action: () => window.location.href = '/',
-      description: 'Go to home dashboard',
-      icon: '🏠',
-    },
-    {
-      keywords: ['go to queue', 'queue center', 'queue'],
-      action: () => window.location.href = '/queue',
-      description: 'Go to Queue Center',
-      icon: '⚡',
-    },
-    {
-      keywords: ['upload', 'upload form', 'upload study'],
-      action: () => window.location.href = '/queue/upload',
-      description: 'Upload interconnection study',
-      icon: '📤',
-    },
-    {
-      keywords: ['monitor', 'queue monitor', 'check queue'],
-      action: () => window.location.href = '/queue/monitor',
-      description: 'Monitor queue position',
-      icon: '📊',
-    },
-    {
-      keywords: ['translator', 'study translator', 'translate'],
-      action: () => window.location.href = '/queue/translator',
-      description: 'Study Translator',
-      icon: '📚',
-    },
-    {
-      keywords: ['timeline', 'predict timeline', 'timeline predictor'],
-      action: () => window.location.href = '/queue/timeline',
-      description: 'Timeline Predictor',
-      icon: '⏰',
-    },
-    {
-      keywords: ['data center', 'analyze', 'permitting'],
-      action: () => window.location.href = '/data-center',
-      description: 'Data Center Analysis',
-      icon: '🏢',
-    },
-    {
-      keywords: ['leads', 'sales', 'pipeline'],
-      action: () => window.location.href = '/admin/leads',
-      description: 'Sales Pipeline',
-      icon: '👥',
-    },
-    {
-      keywords: ['help', 'commands', 'what can i say'],
-      action: () => showHelp(),
-      description: 'Show available commands',
-      icon: '❓',
-    },
-    {
-      keywords: ['clear', 'reset', 'clear history'],
-      action: () => {
-        setTranscript('');
-        setInterimTranscript('');
-        setCommandHistory([]);
-      },
-      description: 'Clear voice history',
-      icon: '🗑️',
-    },
-  ];
-
-  function showHelp() {
-    alert(`Available Voice Commands:\n\n${commands.map(c => `${c.icon} ${c.description}\n   Say: "${c.keywords[0]}"`).join('\n')}`);
-  }
-
-  function processCommand(transcript: string) {
-    const lowerTranscript = transcript.toLowerCase().trim();
-    
-    // Track best match
-    let bestMatch: { command: Command; score: number } | null = null;
-
-    for (const command of commands) {
-      for (const keyword of command.keywords) {
-        // Check for exact substring match (highest priority)
-        if (lowerTranscript.includes(keyword)) {
-          if (!bestMatch || bestMatch.score < 100) {
-            bestMatch = { command, score: 100 };
-          }
-        } else {
-          // Fuzzy match (fallback for typos/variations)
-          const similarity = calculateSimilarity(lowerTranscript, keyword);
-          if (similarity > 70 && (!bestMatch || similarity > bestMatch.score)) {
-            bestMatch = { command, score: similarity };
-          }
-        }
-      }
-    }
-
-    if (bestMatch && bestMatch.score > 70) {
-      setCommandHistory(prev => [...prev, `✅ "${transcript}" → matched at ${bestMatch.score.toFixed(0)}%`]);
-      bestMatch.command.action(transcript);
-    } else {
-      setCommandHistory(prev => [...prev, `❓ "${transcript}" - Command not recognized`]);
-    }
-  }
-
-  // Initialize Speech Recognition
-  useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
-    if (SpeechRecognition) {
-      setIsSupported(true);
-      recognitionRef.current = new SpeechRecognition();
-      
-      const recognition = recognitionRef.current;
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.language = 'en-US';
-
-      recognition.onstart = () => {
-        setIsListening(true);
-        setError('');
-        setTranscript('');
-        console.log('🎙️ Voice recognition started');
-      };
-
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
-        let interim = '';
-        
-        // Process ALL results from the event, not just the last one
-        for (let i = 0; i < event.results.length; i++) {
-          const transcriptPart = event.results[i][0].transcript;
-          
-          if (event.results[i].isFinal) {
-            console.log('✅ Final transcript:', transcriptPart);
-            setTranscript(prev => prev + transcriptPart + ' ');
-            processCommand(transcriptPart);
-          } else {
-            console.log('⏳ Interim transcript:', transcriptPart);
-            interim += transcriptPart;
-          }
-        }
-        
-        setInterimTranscript(interim);
-      };
-
-      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-        console.error('❌ Voice error:', event.error);
-        setError(`Error: ${event.error}`);
-      };
-
-      recognition.onend = () => {
-        console.log('🛑 Voice recognition stopped');
-        setIsListening(false);
-        
-        // Auto-restart if in persistent mode
-        if (persistentRef.current && recognitionRef.current) {
-          setTimeout(() => {
-            console.log('🔄 Restarting voice recognition (persistent mode)');
-            recognitionRef.current?.start();
-          }, 500);
-        }
-      };
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort();
-      }
-    };
   }, []);
 
+  const stopListening = useCallback(() => {
+    clearDictationSilenceTimer(silenceTimerRef);
+    listeningRef.current = false;
+    setIsListening(false);
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* already stopped */
+    }
+  }, []);
 
-  function toggleListening() {
-    if (!recognitionRef.current) return;
-
-    if (isListening) {
-      persistentRef.current = false;
-      recognitionRef.current.stop();
+  const finishFromSilence = useCallback(() => {
+    const text = (finalBufferRef.current || '').trim();
+    setIsListening(false);
+    listeningRef.current = false;
+    if (text) {
+      setTranscript(text);
+      applyTranscript(text, true);
     } else {
-      setTranscript('');
-      setInterimTranscript('');
+      setError('Didn’t catch that — tap the mic and try again.');
+    }
+  }, [applyTranscript]);
+
+  useEffect(() => {
+    const Ctor = getSpeechRecognitionCtor();
+    if (!Ctor) {
+      setIsSupported(false);
+      return;
+    }
+    setIsSupported(true);
+
+    const recognition = new Ctor();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognitionRef.current = recognition;
+
+    recognition.onstart = () => {
+      listeningRef.current = true;
+      setIsListening(true);
+      setError('');
+      setShowConfirm(false);
+    };
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = '';
+      let finalChunk = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const piece = event.results[i][0]?.transcript || '';
+        if (event.results[i].isFinal) {
+          finalChunk += piece + ' ';
+        } else {
+          interim += piece;
+        }
+      }
+      if (finalChunk) {
+        finalBufferRef.current = (finalBufferRef.current + ' ' + finalChunk).trim();
+        setTranscript(finalBufferRef.current);
+        applyTranscript(finalBufferRef.current, false);
+      }
+      setInterimTranscript(interim);
+      if (interim) {
+        applyTranscript(`${finalBufferRef.current} ${interim}`.trim(), false);
+      }
+
+      scheduleDictationSilenceStop({
+        timerRef: silenceTimerRef,
+        silenceMs: 2200,
+        isListening: () => listeningRef.current,
+        stopRecognition: () => {
+          try {
+            recognitionRef.current?.stop();
+          } catch {
+            /* ignore */
+          }
+        },
+        onSilenceStop: finishFromSilence,
+      });
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      const code = event.error || 'unknown';
+      if (code === 'aborted' || code === 'no-speech') {
+        return;
+      }
+      if (code === 'not-allowed') {
+        setError('Microphone blocked — allow mic access in browser settings.');
+      } else if (code === 'network') {
+        setError('Speech service unavailable. Type the address instead.');
+      } else {
+        setError(`Voice error: ${code}. You can still type the form.`);
+      }
+      stopListening();
+    };
+
+    recognition.onend = () => {
+      clearDictationSilenceTimer(silenceTimerRef);
+      if (listeningRef.current) {
+        // Unexpected end — treat as finish if we have text
+        listeningRef.current = false;
+        setIsListening(false);
+        const text = finalBufferRef.current.trim();
+        if (text) {
+          applyTranscript(text, true);
+        }
+      }
+    };
+
+    return () => {
+      clearDictationSilenceTimer(silenceTimerRef);
+      try {
+        recognition.abort();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [applyTranscript, finishFromSilence, stopListening]);
+
+  function startListening() {
+    if (!recognitionRef.current) return;
+    setError('');
+    setTranscript('');
+    setInterimTranscript('');
+    setParsed(null);
+    setShowConfirm(false);
+    finalBufferRef.current = '';
+    try {
       recognitionRef.current.start();
+    } catch {
+      // Already started
+      try {
+        recognitionRef.current.stop();
+        setTimeout(() => recognitionRef.current?.start(), 200);
+      } catch {
+        setError('Could not start microphone. Refresh and try again.');
+      }
     }
   }
 
-  function togglePersistentMode() {
-    persistentRef.current = !persistentRef.current;
-    setPersistentMode(!persistentMode);
-    const mode = !persistentMode ? 'ON' : 'OFF';
-    setCommandHistory(prev => [...prev, `🔄 Persistent mode: ${mode}`]);
+  function toggleListening() {
+    if (!isSupported) {
+      setUnsupportedHint(true);
+      return;
+    }
+    if (isListening) {
+      stopListening();
+      const text = finalBufferRef.current.trim();
+      if (text) {
+        setTranscript(text);
+        applyTranscript(text, true);
+      }
+    } else {
+      startListening();
+    }
   }
 
-  if (!isSupported) {
-    return (
-      <div className="voice-command-notice">
-        <AlertCircle size={20} />
-        <p>Voice commands not supported in this browser</p>
-      </div>
-    );
+  function handleRunResearch() {
+    if (parsed) {
+      dispatchVoiceFill(parsed);
+    }
+    dispatchVoiceSubmit();
+    setShowConfirm(false);
   }
+
+  const chips: { label: string; value: string }[] = [];
+  if (parsed?.address) chips.push({ label: 'Address', value: parsed.address });
+  if (parsed?.city) chips.push({ label: 'City', value: parsed.city });
+  if (parsed?.state) chips.push({ label: 'State', value: parsed.state });
+  if (parsed?.zip) chips.push({ label: 'ZIP', value: parsed.zip });
+  if (parsed?.email) chips.push({ label: 'Email', value: parsed.email });
+  if (parsed?.phone) chips.push({ label: 'Phone', value: formatPhoneChip(parsed.phone) });
+
+  const ready = parsed ? voiceFieldsReady(parsed) : false;
 
   return (
-    <div className="voice-command-system">
-      {/* Voice Command Button */}
+    <div className="voice-command-system voice-fill-mode">
       <button
+        type="button"
         onClick={toggleListening}
-        className={`voice-button ${isListening ? 'listening' : ''}`}
-        title="Click to toggle voice commands"
+        className={`voice-button voice-fill-button ${isListening ? 'listening' : ''}`}
+        title={isListening ? 'Tap to stop' : 'Tap to speak your site address'}
+        aria-label={isListening ? 'Stop listening' : 'Fill free trial by voice'}
       >
-        {isListening ? <Mic size={24} /> : <MicOff size={24} />}
+        {isListening ? <Mic size={28} /> : <MicOff size={28} />}
         <span className="voice-status">
-          {isListening ? 'Listening...' : 'Voice Commands'}
+          {isListening ? 'Listening…' : 'Speak address'}
         </span>
+        {isListening && <span className="voice-pulse-ring" aria-hidden />}
       </button>
 
-      {/* Voice Command Panel */}
-      {isListening && (
-        <div className="voice-panel">
+      {(isListening || showConfirm || error || unsupportedHint) && (
+        <div className="voice-panel voice-fill-panel" role="status" aria-live="polite">
           <div className="voice-header">
-            <Volume2 size={20} className="listening-icon" />
-            <span>Voice Command Active</span>
-            <button
-              onClick={togglePersistentMode}
-              className={`persistent-toggle ${persistentMode ? 'active' : ''}`}
-              title={persistentMode ? 'Persistent mode ON' : 'Persistent mode OFF'}
-            >
-              🔄
-            </button>
-          </div>
-
-          {/* Real-time transcript */}
-          <div className="voice-transcript">
-            <p className="final-text">{transcript}</p>
-            {interimTranscript && (
-              <p className="interim-text">{interimTranscript}</p>
+            {isListening ? (
+              <>
+                <span className="listening-dot" />
+                <span>Listening — say address, city, state, ZIP, and email</span>
+              </>
+            ) : showConfirm ? (
+              <>
+                <CheckCircle2 size={18} className="text-emerald-400" />
+                <span>Fields captured</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle size={18} />
+                <span>Voice fill</span>
+              </>
             )}
           </div>
 
-          {/* Error display */}
-          {error && <div className="voice-error">{error}</div>}
-
-          {/* Quick commands */}
-          <div className="quick-commands">
-            <p className="quick-label">Quick Commands:</p>
-            <div className="commands-grid">
-              {commands.slice(0, 8).map((cmd, idx) => (
-                <button
-                  key={idx}
-                  className="quick-command"
-                  onClick={() => cmd.action('')}
-                  title={cmd.description}
-                >
-                  <span className="cmd-icon">{cmd.icon}</span>
-                  <span className="cmd-text">{cmd.keywords[0]}</span>
-                </button>
-              ))}
-            </div>
+          <div className="voice-transcript">
+            <p className="final-text">{transcript || (isListening ? 'Say something like…' : '')}</p>
+            {interimTranscript && <p className="interim-text">{interimTranscript}</p>}
+            {!transcript && isListening && (
+              <p className="interim-text">
+                “123 Main Street in Austin Texas 78701, email me at you@company.com”
+              </p>
+            )}
           </div>
 
-          {/* Command history */}
-          {commandHistory.length > 0 && (
-            <div className="command-history">
-              <p className="history-label">History:</p>
-              <div className="history-list">
-                {commandHistory.slice(-3).reverse().map((cmd, idx) => (
-                  <div key={idx} className="history-item">
-                    {cmd}
-                  </div>
-                ))}
-              </div>
+          {chips.length > 0 && (
+            <div className="voice-chips">
+              {chips.map((c) => (
+                <span key={c.label} className="voice-chip">
+                  <strong>{c.label}</strong> {c.value}
+                </span>
+              ))}
             </div>
           )}
 
-          {/* Close button */}
-          <button
-            onClick={() => recognitionRef.current?.stop()}
-            className="voice-close"
-          >
-            Stop Listening
-          </button>
+          {error && <div className="voice-error">{error}</div>}
+          {unsupportedHint && !isSupported && (
+            <div className="voice-error">
+              Voice fill needs Chrome, Edge, or Safari. Type the form instead — same result.
+            </div>
+          )}
+
+          {showConfirm && (
+            <div className="voice-confirm-actions">
+              {ready ? (
+                <button type="button" className="voice-run-btn" onClick={handleRunResearch}>
+                  Run research
+                </button>
+              ) : (
+                <p className="voice-hint">
+                  Need address, city, state, ZIP, and email — tap mic again or finish typing.
+                </p>
+              )}
+              <button type="button" className="voice-close" onClick={() => setShowConfirm(false)}>
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {isListening && (
+            <button type="button" className="voice-close" onClick={toggleListening}>
+              Stop &amp; fill form
+            </button>
+          )}
         </div>
       )}
     </div>

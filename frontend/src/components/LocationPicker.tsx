@@ -9,9 +9,20 @@ import { MapPin, Navigation, AlertCircle } from 'lucide-react';
 interface LocationPickerProps {
   onLocationSelect: (address: string, city: string, state: string, zip: string, lat: number, lng: number) => void;
   disabled?: boolean;
+  /** Voice fill / parent-driven address fields */
+  externalValues?: {
+    address?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  } | null;
 }
 
-export function LocationPicker({ onLocationSelect, disabled = false }: LocationPickerProps) {
+export function LocationPicker({
+  onLocationSelect,
+  disabled = false,
+  externalValues = null,
+}: LocationPickerProps) {
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
@@ -25,6 +36,32 @@ export function LocationPicker({ onLocationSelect, disabled = false }: LocationP
   const [locationConfirmed, setLocationConfirmed] = useState(false);
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
+
+  // Sync voice-fill / external parent values into local fields
+  useEffect(() => {
+    if (!externalValues) return;
+    const nextAddress = externalValues.address ?? '';
+    const nextCity = externalValues.city ?? '';
+    const nextState = externalValues.state ?? '';
+    const nextZip = externalValues.zip ?? '';
+    if (!nextAddress && !nextCity && !nextState && !nextZip) return;
+    setUseManualEntry(true);
+    if (nextAddress) setAddress(nextAddress);
+    if (nextCity) setCity(nextCity);
+    if (nextState) setState(nextState);
+    if (nextZip) setZip(nextZip);
+    if (nextAddress && nextCity && nextState && nextZip) {
+      onLocationSelect(nextAddress, nextCity, nextState, nextZip, 0, 0);
+      setLocationConfirmed(true);
+    }
+    // intentionally only when externalValues identity/content changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    externalValues?.address,
+    externalValues?.city,
+    externalValues?.state,
+    externalValues?.zip,
+  ]);
 
   // Auto-detect current location
   const handleAutoDetect = async () => {

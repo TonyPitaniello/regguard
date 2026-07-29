@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { X, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, Copy, Check, Share2 } from 'lucide-react';
 import SendResultsForm, { ResultsSummaryPayload } from './SendResultsForm';
 
 export interface AnalysisData {
@@ -63,6 +63,19 @@ interface ResultsViewerModalProps {
   analysis: AnalysisData;
   researchId?: string | null;
   defaultEmail?: string;
+  defaultPhone?: string;
+}
+
+function buildShareText(analysis: AnalysisData): string {
+  const p = analysis.project_info;
+  const risk = analysis.environmental_screening?.risk_level || 'N/A';
+  const timeline = analysis.summary?.estimated_timeline || 'TBD';
+  const cost = analysis.summary?.estimated_total_cost;
+  return [
+    `RegGuard site diligence: ${p.address}, ${p.city}, ${p.state} ${p.zip}`,
+    `Risk: ${risk} · Timeline: ${timeline}${cost != null ? ` · Est. cost: $${Number(cost).toLocaleString()}` : ''}`,
+    `Try RegGuard free: ${typeof window !== 'undefined' ? window.location.origin : 'https://app.regguardagent.com'}`,
+  ].join('\n');
 }
 
 function getRiskColor(level: string) {
@@ -113,20 +126,55 @@ export default function ResultsViewerModal({
   analysis,
   researchId,
   defaultEmail = '',
+  defaultPhone = '',
 }: ResultsViewerModalProps) {
   const [expanded, setExpanded] = useState({
     environmental: true,
     punchList: true,
     critical: true,
   });
+  const [copied, setCopied] = useState<'link' | 'text' | null>(null);
 
   if (!isOpen || !analysis) return null;
 
   const summary = buildSummaryFromAnalysis(analysis);
   const effectiveResearchId = researchId || analysis.research_id || null;
+  const shareText = buildShareText(analysis);
+  const resultsLink =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/results`
+      : 'https://app.regguardagent.com/results';
 
   const toggle = (key: keyof typeof expanded) => {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const copy = async (kind: 'link' | 'text') => {
+    // Cross-device "link" must carry the summary — sessionStorage alone won't travel.
+    const value =
+      kind === 'link'
+        ? `${shareText}\n\nOpen RegGuard: ${resultsLink}`
+        : shareText;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(kind);
+      window.setTimeout(() => setCopied(null), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const openWhatsApp = () => {
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const openLinkedIn = () => {
+    void copy('text');
+    window.open(
+      `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(resultsLink)}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
   };
 
   return (
@@ -161,12 +209,45 @@ export default function ResultsViewerModal({
         </div>
 
         {/* Text / Email FIRST — always visible without scrolling */}
-        <div className="px-5 sm:px-8 py-4 border-b border-emerald-500/30 bg-slate-950/90 shrink-0">
+        <div className="px-5 sm:px-8 py-4 border-b border-emerald-500/30 bg-slate-950/90 shrink-0 space-y-3">
           <SendResultsForm
             researchId={effectiveResearchId}
             summary={summary}
             defaultEmail={defaultEmail}
+            defaultPhone={defaultPhone}
           />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void copy('link')}
+              className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-purple-500/40 bg-purple-500/10 text-purple-200 text-sm font-semibold hover:bg-purple-500/20 transition"
+            >
+              {copied === 'link' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              {copied === 'link' ? 'Copied link' : 'Copy link to results'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void copy('text')}
+              className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-slate-600 bg-slate-800/80 text-gray-200 text-sm font-semibold hover:bg-slate-700 transition"
+            >
+              {copied === 'text' ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
+              {copied === 'text' ? 'Copied share text' : 'Copy share text'}
+            </button>
+            <button
+              type="button"
+              onClick={openWhatsApp}
+              className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-sm font-semibold hover:bg-emerald-500/20 transition"
+            >
+              WhatsApp
+            </button>
+            <button
+              type="button"
+              onClick={openLinkedIn}
+              className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-blue-500/40 bg-blue-500/10 text-blue-200 text-sm font-semibold hover:bg-blue-500/20 transition"
+            >
+              LinkedIn
+            </button>
+          </div>
         </div>
 
         {/* Scrollable body */}

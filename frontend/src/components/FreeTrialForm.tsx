@@ -1,14 +1,20 @@
 /**
  * Shared free-trial form used on homepage (/) and /free-trial
  * Always opens ResultsViewerModal — even if API returns no analysis_data.
+ * Listens for voice-fill events from VoiceCommandSystem.
  */
 
-import { useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, CheckCircle2, Loader2, MapPin, Search, ListChecks } from 'lucide-react';
 import { LocationPicker } from './LocationPicker';
 import { backendUrl } from '../env';
 import ResultsViewerModal, { AnalysisData } from './ResultsViewerModal';
 import { buildClientInstantAnalysis } from './buildClientInstantAnalysis';
+import {
+  VOICE_FILL_EVENT,
+  VOICE_SUBMIT_EVENT,
+  type VoiceFillDetail,
+} from '../voiceFillParse';
 
 function generateClientResearchId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -16,6 +22,14 @@ function generateClientResearchId(): string {
   }
   return `ft-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
+
+type ProgressStep = 'geocode' | 'screen' | 'punch';
+
+const PROGRESS_LABELS: Record<ProgressStep, string> = {
+  geocode: 'Geocoding site…',
+  screen: 'Screening permits & environment…',
+  punch: 'Building punch list…',
+};
 
 export default function FreeTrialForm({ showHero = false }: { showHero?: boolean }) {
   const [formData, setFormData] = useState({
@@ -25,12 +39,23 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
     zip: '',
     projectType: 'data-center',
     email: '',
+    phone: '',
   });
+  const [externalLocation, setExternalLocation] = useState<{
+    address?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [progressStep, setProgressStep] = useState<ProgressStep>('geocode');
   const [resultsOpen, setResultsOpen] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
   const [researchId, setResearchId] = useState<string | null>(null);
+  const [voiceHint, setVoiceHint] = useState('');
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -54,108 +79,181 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
     }));
   };
 
-  const showResults = (analysisPayload: AnalysisData, id: string) => {
+  const showResults = useCallback((analysisPayload: AnalysisData, id: string, email?: string) => {
     const analysisWithId: AnalysisData = { ...analysisPayload, research_id: id };
     sessionStorage.setItem('analysisResults', JSON.stringify(analysisWithId));
     sessionStorage.setItem('researchId', id);
-    if (formData.email) sessionStorage.setItem('userEmail', formData.email);
+    const mail = email || formDataRef.current.email;
+    if (mail) sessionStorage.setItem('userEmail', mail);
     setResearchId(id);
     setAnalysis(analysisWithId);
     setResultsOpen(true);
-  };
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const runResearch = useCallback(async () => {
+    const data = formDataRef.current;
     setError('');
     setLoading(true);
+    setProgressStep('geocode');
 
-    if (!formData.address || !formData.city || !formData.state || !formData.zip || !formData.email) {
-      setError('Please fill in all fields including ZIP code');
+    if (!data.address || !data.city || !data.state || !data.zip || !data.email) {
+      setError('Please fill in address, city, state, ZIP, and email');
       setLoading(false);
       return;
     }
 
+    const progressTimers = [
+      window.setTimeout(() => setProgressStep('screen'), 900),
+      window.setTimeout(() => setProgressStep('punch'), 2200),
+    ];
+
     try {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+
       const response = await fetch(backendUrl('/free-trial'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
-          address: `${formData.address}, ${formData.city}, ${formData.state}, ${formData.zip}`,
-          zip: formData.zip,
-          project_type: formData.projectType,
-          email: formData.email,
+          address: `${data.address}, ${data.city}, ${data.state}, ${data.zip}`,
+          zip: data.zip,
+          project_type: data.projectType,
+          email: data.email,
+          phone: data.phone || undefined,
         }),
       });
+      window.clearTimeout(timeoutId);
 
-      let data: Record<string, unknown> = {};
+      let payload: Record<string, unknown> = {};
       try {
-        data = await response.json();
+        payload = await response.json();
       } catch {
-        data = {};
+        payload = {};
       }
 
-      if (data.analysis_data && typeof data.analysis_data === 'object') {
+      if (response.status === 429) {
+        setError(
+          (payload.detail as string) ||
+            'Too many requests — wait a minute and try again. No charge either way.'
+        );
+        return;
+      }
+
+      setProgressStep('punch');
+
+      if (payload.analysis_data && typeof payload.analysis_data === 'object') {
         const clientId =
-          (data.research_id as string) ||
-          ((data.analysis_data as AnalysisData).research_id as string) ||
+          (payload.research_id as string) ||
+          ((payload.analysis_data as AnalysisData).research_id as string) ||
           generateClientResearchId();
-        showResults(data.analysis_data as AnalysisData, clientId);
+        showResults(payload.analysis_data as AnalysisData, clientId, data.email);
       } else {
-        // Production API still returning email-queue-only — open modal anyway
-        const clientId = (data.trial_id as string) || generateClientResearchId();
+        const clientId = (payload.trial_id as string) || generateClientResearchId();
         showResults(
           buildClientInstantAnalysis({
-            address: formData.address,
-            city: formData.city,
-            state: formData.state,
-            zip: formData.zip,
-            projectType: formData.projectType,
+            address: data.address,
+            city: data.city,
+            state: data.state,
+            zip: data.zip,
+            projectType: data.projectType,
           }),
-          clientId
+          clientId,
+          data.email
         );
       }
     } catch (err) {
       console.error(err);
       showResults(
         buildClientInstantAnalysis({
-          address: formData.address,
-          city: formData.city,
-          state: formData.state,
-          zip: formData.zip,
-          projectType: formData.projectType,
+          address: data.address,
+          city: data.city,
+          state: data.state,
+          zip: data.zip,
+          projectType: data.projectType,
         }),
-        generateClientResearchId()
+        generateClientResearchId(),
+        data.email
       );
     } finally {
+      progressTimers.forEach((t) => window.clearTimeout(t));
       setLoading(false);
     }
+  }, [showResults]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runResearch();
   };
+
+  // Voice fill → form state
+  useEffect(() => {
+    const onFill = (ev: Event) => {
+      const detail = (ev as CustomEvent<VoiceFillDetail>).detail;
+      if (!detail) return;
+      setExternalLocation({
+        address: detail.address || undefined,
+        city: detail.city || undefined,
+        state: detail.state || undefined,
+        zip: detail.zip || undefined,
+      });
+      setFormData((prev) => ({
+        ...prev,
+        address: detail.address || prev.address,
+        city: detail.city || prev.city,
+        state: detail.state || prev.state,
+        zip: detail.zip || prev.zip,
+        email: detail.email || prev.email,
+        phone: detail.phone || prev.phone,
+      }));
+      if (detail.readyToRun) {
+        setVoiceHint('Voice fields ready — tap Run research or submit below.');
+      } else if (detail.transcript) {
+        setVoiceHint('Listening captured — complete any missing fields, then run.');
+      }
+    };
+
+    const onSubmit = () => {
+      void runResearch();
+    };
+
+    window.addEventListener(VOICE_FILL_EVENT, onFill);
+    window.addEventListener(VOICE_SUBMIT_EVENT, onSubmit);
+    return () => {
+      window.removeEventListener(VOICE_FILL_EVENT, onFill);
+      window.removeEventListener(VOICE_SUBMIT_EVENT, onSubmit);
+    };
+  }, [runResearch]);
 
   return (
     <div id="free-trial-form">
       {showHero && (
-        <div className="text-center mb-10">
+        <div className="text-center mb-8">
           <h2 className="text-3xl md:text-4xl font-black text-white mb-3">Try RegGuard Free</h2>
-          <p className="text-gray-300">
-            No credit card. Enter your site below — results open in an overlay, then you can text or email them.
+          <p className="text-gray-300 text-base md:text-lg">
+            One site. Seconds to a punch list. Or tap the mic and just say the address.
           </p>
         </div>
       )}
 
-      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-purple-500/30 rounded-2xl p-8 md:p-10">
-        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-          <LocationPicker onLocationSelect={handleLocationSelect} disabled={loading} />
+      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-purple-500/30 rounded-2xl p-6 md:p-10">
+        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+          <LocationPicker
+            onLocationSelect={handleLocationSelect}
+            disabled={loading}
+            externalValues={externalLocation}
+          />
 
           <div>
             <label htmlFor="projectType" className="block text-white font-bold mb-2">
-              What type of project? *
+              Project type *
             </label>
             <select
               id="projectType"
               name="projectType"
               value={formData.projectType}
               onChange={handleInputChange}
-              className="w-full px-4 py-3 bg-slate-700 border border-purple-500/30 rounded-lg text-white focus:outline-none focus:border-purple-500"
+              className="w-full px-4 py-3.5 min-h-[48px] bg-slate-700 border border-purple-500/30 rounded-lg text-white focus:outline-none focus:border-purple-500 text-base"
               disabled={loading}
             >
               <option value="data-center">Data Center</option>
@@ -167,22 +265,47 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
             </select>
           </div>
 
-          <div>
-            <label htmlFor="home-email" className="block text-white font-bold mb-2">
-              Your Email *
-            </label>
-            <input
-              id="home-email"
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              placeholder="you@company.com"
-              autoComplete="email"
-              className="w-full px-4 py-3 bg-slate-700 border border-purple-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-              disabled={loading}
-            />
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="home-email" className="block text-white font-bold mb-2">
+                Email *
+              </label>
+              <input
+                id="home-email"
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                placeholder="you@company.com"
+                autoComplete="email"
+                className="w-full px-4 py-3.5 min-h-[48px] bg-slate-700 border border-purple-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 text-base"
+                disabled={loading}
+              />
+            </div>
+            <div>
+              <label htmlFor="home-phone" className="block text-white font-bold mb-2">
+                Phone <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                id="home-phone"
+                type="tel"
+                name="phone"
+                value={formData.phone}
+                onChange={handleInputChange}
+                placeholder="(555) 123-4567"
+                autoComplete="tel"
+                className="w-full px-4 py-3.5 min-h-[48px] bg-slate-700 border border-purple-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 text-base"
+                disabled={loading}
+              />
+            </div>
           </div>
+
+          {voiceHint && (
+            <div className="flex gap-2 p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-lg">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+              <p className="text-emerald-200 text-sm">{voiceHint}</p>
+            </div>
+          )}
 
           {error && (
             <div className="flex gap-3 p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
@@ -191,16 +314,49 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
             </div>
           )}
 
+          {loading && (
+            <div className="rounded-xl border border-purple-500/30 bg-slate-900/70 p-4 space-y-3">
+              {(
+                [
+                  ['geocode', MapPin],
+                  ['screen', Search],
+                  ['punch', ListChecks],
+                ] as const
+              ).map(([step, Icon]) => {
+                const order: ProgressStep[] = ['geocode', 'screen', 'punch'];
+                const activeIdx = order.indexOf(progressStep);
+                const stepIdx = order.indexOf(step);
+                const done = stepIdx < activeIdx;
+                const active = step === progressStep;
+                return (
+                  <div
+                    key={step}
+                    className={`flex items-center gap-3 text-sm ${
+                      active ? 'text-emerald-300' : done ? 'text-gray-400' : 'text-gray-500'
+                    }`}
+                  >
+                    {active ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
+                    ) : (
+                      <Icon className="w-5 h-5" />
+                    )}
+                    <span className={active ? 'font-bold' : ''}>{PROGRESS_LABELS[step]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={loading}
-            className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold text-lg rounded-xl transition shadow-lg shadow-green-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-6 py-4 min-h-[56px] bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold text-lg rounded-xl transition shadow-lg shadow-green-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Analyzing site…' : 'Get Free Research Results'}
           </button>
 
-          <p className="text-gray-400 text-sm text-center">
-            Results open in a window on this page. Then text or email them.
+          <p className="text-gray-400 text-sm text-center leading-relaxed">
+            No credit card. Results in seconds. Text or email yourself from the results window.
           </p>
         </form>
       </div>
@@ -212,6 +368,7 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
           analysis={analysis}
           researchId={researchId}
           defaultEmail={formData.email}
+          defaultPhone={formData.phone}
         />
       )}
     </div>

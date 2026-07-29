@@ -3,7 +3,7 @@
  * Uses API when available; optional native sms:/mailto: only via explicit secondary buttons.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertCircle, CheckCircle, Loader, Mail, Phone, MessageSquare } from 'lucide-react';
 import { backendUrl } from '../env';
 
@@ -22,6 +22,7 @@ interface SendResultsFormProps {
   summary: ResultsSummaryPayload;
   userId?: string;
   defaultEmail?: string;
+  defaultPhone?: string;
   compact?: boolean;
 }
 
@@ -44,8 +45,9 @@ export default function SendResultsForm({
   summary,
   userId,
   defaultEmail = '',
+  defaultPhone = '',
 }: SendResultsFormProps) {
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(defaultPhone);
   const [email, setEmail] = useState(defaultEmail);
   const [loadingSms, setLoadingSms] = useState(false);
   const [loadingEmail, setLoadingEmail] = useState(false);
@@ -54,6 +56,14 @@ export default function SendResultsForm({
   const [error, setError] = useState('');
   const [showSmsNativeFallback, setShowSmsNativeFallback] = useState(false);
   const [showEmailNativeFallback, setShowEmailNativeFallback] = useState(false);
+
+  // Keep defaults in sync when voice fill lands after mount
+  useEffect(() => {
+    if (defaultEmail) setEmail(defaultEmail);
+  }, [defaultEmail]);
+  useEffect(() => {
+    if (defaultPhone) setPhone(defaultPhone);
+  }, [defaultPhone]);
 
   const validatePhone = (value: string): boolean => {
     const digits = value.replace(/\D/g, '');
@@ -105,18 +115,29 @@ export default function SendResultsForm({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildBody({ phone_number: phone })),
       });
+      if (response.status === 429) {
+        let detail = 'Too many texts — try again in a few minutes.';
+        try {
+          const errBody = await response.json();
+          if (errBody?.detail) detail = String(errBody.detail);
+        } catch {
+          /* ignore */
+        }
+        setError(detail);
+        return;
+      }
       if (response.ok) {
         setSmsSuccess(`Text sent to ${formatPhoneDisplay(phone)}`);
         setPhone('');
         return;
       }
       setError(
-        'Text could not be sent. Twilio or server SMS configuration may be missing or misconfigured. Check backend Twilio settings and try again.',
+        'Text could not be sent (Twilio may be offline). Use “Open in Messages” below, or copy share text.',
       );
       setShowSmsNativeFallback(true);
     } catch {
       setError(
-        'Text could not be sent. Twilio or server SMS configuration may be missing or misconfigured. Check backend Twilio settings and try again.',
+        'Text could not be sent (Twilio may be offline). Use “Open in Messages” below, or copy share text.',
       );
       setShowSmsNativeFallback(true);
     } finally {
@@ -140,17 +161,28 @@ export default function SendResultsForm({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildBody({ email, email_address: email })),
       });
+      if (response.status === 429) {
+        let detail = 'Too many emails — try again in a few minutes.';
+        try {
+          const errBody = await response.json();
+          if (errBody?.detail) detail = String(errBody.detail);
+        } catch {
+          /* ignore */
+        }
+        setError(detail);
+        return;
+      }
       if (response.ok) {
         setEmailSuccess(`Email sent to ${email}`);
         return;
       }
       setError(
-        'Email could not be sent. Server email configuration may be missing or misconfigured. Check backend email settings and try again.',
+        'Email could not be sent. Use “Open email app” below, or copy share text.',
       );
       setShowEmailNativeFallback(true);
     } catch {
       setError(
-        'Email could not be sent. Server email configuration may be missing or misconfigured. Check backend email settings and try again.',
+        'Email could not be sent. Use “Open email app” below, or copy share text.',
       );
       setShowEmailNativeFallback(true);
     } finally {

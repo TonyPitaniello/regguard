@@ -19,6 +19,8 @@ class FreeTrialRequest(BaseModel):
     address: str
     project_type: str
     email: str
+    zip: Optional[str] = None
+    phone: Optional[str] = None
 
 
 class FreeTrialResponse(BaseModel):
