@@ -1,6 +1,6 @@
 /**
  * Dual phone + email send form for research results.
- * Uses API when available; falls back to native sms:/mailto: so Text always works.
+ * Uses API when available; optional native sms:/mailto: only via explicit secondary buttons.
  */
 
 import { useState } from 'react';
@@ -52,6 +52,8 @@ export default function SendResultsForm({
   const [smsSuccess, setSmsSuccess] = useState('');
   const [emailSuccess, setEmailSuccess] = useState('');
   const [error, setError] = useState('');
+  const [showSmsNativeFallback, setShowSmsNativeFallback] = useState(false);
+  const [showEmailNativeFallback, setShowEmailNativeFallback] = useState(false);
 
   const validatePhone = (value: string): boolean => {
     const digits = value.replace(/\D/g, '');
@@ -90,6 +92,7 @@ export default function SendResultsForm({
   const handleSendSms = async () => {
     setError('');
     setSmsSuccess('');
+    setShowSmsNativeFallback(false);
     if (!phone || !validatePhone(phone)) {
       setError('Please enter a valid US phone number (10 digits)');
       return;
@@ -107,11 +110,15 @@ export default function SendResultsForm({
         setPhone('');
         return;
       }
-      openNativeSms(phone);
-      setSmsSuccess(`Opening Messages to text ${formatPhoneDisplay(phone)}…`);
+      setError(
+        'Text could not be sent. Twilio or server SMS configuration may be missing or misconfigured. Check backend Twilio settings and try again.',
+      );
+      setShowSmsNativeFallback(true);
     } catch {
-      openNativeSms(phone);
-      setSmsSuccess(`Opening Messages to text ${formatPhoneDisplay(phone)}…`);
+      setError(
+        'Text could not be sent. Twilio or server SMS configuration may be missing or misconfigured. Check backend Twilio settings and try again.',
+      );
+      setShowSmsNativeFallback(true);
     } finally {
       setLoadingSms(false);
     }
@@ -120,6 +127,7 @@ export default function SendResultsForm({
   const handleSendEmail = async () => {
     setError('');
     setEmailSuccess('');
+    setShowEmailNativeFallback(false);
     if (!email || !validateEmail(email)) {
       setError('Please enter a valid email address');
       return;
@@ -136,11 +144,15 @@ export default function SendResultsForm({
         setEmailSuccess(`Email sent to ${email}`);
         return;
       }
-      openNativeEmail(email);
-      setEmailSuccess(`Opening your email app for ${email}…`);
+      setError(
+        'Email could not be sent. Server email configuration may be missing or misconfigured. Check backend email settings and try again.',
+      );
+      setShowEmailNativeFallback(true);
     } catch {
-      openNativeEmail(email);
-      setEmailSuccess(`Opening your email app for ${email}…`);
+      setError(
+        'Email could not be sent. Server email configuration may be missing or misconfigured. Check backend email settings and try again.',
+      );
+      setShowEmailNativeFallback(true);
     } finally {
       setLoadingEmail(false);
     }
@@ -207,6 +219,15 @@ export default function SendResultsForm({
             Text me
           </button>
         </div>
+        {showSmsNativeFallback && phone && validatePhone(phone) && (
+          <button
+            type="button"
+            onClick={() => openNativeSms(phone)}
+            className="w-full sm:w-auto px-4 py-2 text-sm font-semibold text-emerald-300 border border-emerald-500/40 rounded-lg hover:bg-emerald-500/10 transition"
+          >
+            Open in Messages
+          </button>
+        )}
       </div>
 
       <div className="space-y-2 rounded-lg border border-blue-500/40 bg-slate-900/60 p-4">
@@ -235,6 +256,15 @@ export default function SendResultsForm({
             Email me
           </button>
         </div>
+        {showEmailNativeFallback && email && validateEmail(email) && (
+          <button
+            type="button"
+            onClick={() => openNativeEmail(email)}
+            className="w-full sm:w-auto px-4 py-2 text-sm font-semibold text-blue-300 border border-blue-500/40 rounded-lg hover:bg-blue-500/10 transition"
+          >
+            Open email app
+          </button>
+        )}
       </div>
     </div>
   );
