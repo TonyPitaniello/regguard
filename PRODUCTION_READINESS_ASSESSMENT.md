@@ -65,7 +65,7 @@ from fastapi.security import HTTPBearer
 ### BLOCKER 3: Inconsistent API Key Configuration ⚠️
 
 **Issue:** Gemini API key appears in two places:
-- Line 26: `` ✅
+- Line 26: `GEMINI_API_KEY=[REDACTED]` ✅
 - Line 58: `GEMINI_API_KEY=` ❌ (empty)
 
 **Issue:** Resend API key missing:
