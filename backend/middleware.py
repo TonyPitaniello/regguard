@@ -8,7 +8,7 @@ import logging
 from functools import wraps
 from typing import List, Optional, Any, Callable
 from fastapi import HTTPException, Request
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ except ImportError:
 VALID_TIERS = ["free", "contractor_pro", "ic_consultant", "sponsor_admin", "partner_admin"]
 VALID_SEGMENTS = ["contractor", "ic_consultant", "sponsor", "partner", "admin"]
 
-security = HTTPBearer(optional=True)
+security = HTTPBearer()
 
 
 class AuthUser:
