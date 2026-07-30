@@ -122,24 +122,29 @@ class TwilioSMSService(SMSService):
             if risk_verified
             else "Risk score: unavailable (preview)\n"
         )
+        share = research_data.get("share_url") or ""
+        if not share and research_data.get("research_id"):
+            try:
+                from research_store import share_url_for
 
-        # Build concise message - aim for 160 chars for single SMS
+                share = share_url_for(str(research_data["research_id"]))
+            except Exception:
+                share = "https://app.regguardagent.com/"
+
+        # Prefer share link over long cost detail for SMS usefulness
         message = (
             f"RegGuard: {city}, {state} {zip_code}\n"
             f"{risk_line}"
             f"💰 {cost_tag}${total_cost:,.0f}"
             f"{' (est.)' if unverified else ''}\n"
-            f"⏱️  {timeline}\n"
-            f"View: app.regguardagent.com"
+            f"Report: {share}"
         )
 
-        # If message is too long, shorten further
         if len(message) > 160:
             message = (
                 f"RegGuard {city}, {state}\n"
-                f"{'Preview est.' if unverified else 'Cost'}: {cost_tag}${total_cost:,.0f}\n"
-                f"{timeline}\n"
-                f"app.regguardagent.com"
+                f"{'Est ' if unverified else ''}{cost_tag}${total_cost:,.0f}\n"
+                f"{share}"
             )
 
         return message

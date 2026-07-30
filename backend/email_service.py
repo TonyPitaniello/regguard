@@ -8,6 +8,8 @@ import logging
 import traceback
 from typing import Optional
 
+from report_email import build_forwardable_result_html
+
 logger = logging.getLogger(__name__)
 
 
@@ -170,6 +172,9 @@ RegGuard © 2026
 """
 
     def _build_result_html_email(self, research_data: dict) -> str:
+        """Build forwardable HTML: full punch list + sources + share link."""
+        return build_forwardable_result_html(research_data)
+        # legacy template below kept for reference / unreachable
         """Build professional HTML email for research result delivery"""
         project_info = research_data.get("project_info", {})
         summary = research_data.get("summary", {})
@@ -529,6 +534,9 @@ class ResendEmailService(EmailService):
             raise
 
     def _build_result_html_email(self, research_data: dict) -> str:
+        """Build forwardable HTML: full punch list + sources + share link."""
+        return build_forwardable_result_html(research_data)
+        # legacy template below kept for reference / unreachable
         """Build professional HTML email for research result delivery"""
         project_info = research_data.get("project_info", {})
         summary = research_data.get("summary", {})

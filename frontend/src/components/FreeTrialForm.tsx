@@ -89,6 +89,31 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
     setResearchId(id);
     setAnalysis(honest);
     setResultsOpen(true);
+
+    // Persist for shareable /r/{id} — non-blocking
+    void fetch(backendUrl('/research/persist'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ analysis: honest, research_id: id }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const meta = await res.json();
+        if (meta?.share_url && meta?.research_id) {
+          const withShare = {
+            ...honest,
+            research_id: meta.research_id as string,
+            share_url: meta.share_url as string,
+          };
+          sessionStorage.setItem('analysisResults', JSON.stringify(withShare));
+          sessionStorage.setItem('researchId', meta.research_id);
+          setResearchId(meta.research_id);
+          setAnalysis(withShare as AnalysisData);
+        }
+      })
+      .catch(() => {
+        /* persist failure must not block results UI */
+      });
   }, []);
 
   const runResearch = useCallback(async () => {
@@ -144,11 +169,16 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
       setProgressStep('punch');
 
       if (payload.analysis_data && typeof payload.analysis_data === 'object') {
+        const analysisData = {
+          ...(payload.analysis_data as AnalysisData),
+          ...(payload.share_url ? { share_url: payload.share_url as string } : {}),
+          ...(payload.research_id ? { research_id: payload.research_id as string } : {}),
+        };
         const clientId =
           (payload.research_id as string) ||
-          ((payload.analysis_data as AnalysisData).research_id as string) ||
+          analysisData.research_id ||
           generateClientResearchId();
-        showResults(payload.analysis_data as AnalysisData, clientId, data.email);
+        showResults(analysisData, clientId, data.email);
       } else {
         const clientId = (payload.trial_id as string) || generateClientResearchId();
         showResults(

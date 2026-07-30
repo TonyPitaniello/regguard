@@ -13,6 +13,7 @@ const APP_URL = 'https://app.regguardagent.com/';
 export interface AnalysisData {
   timestamp: string;
   research_id?: string;
+  share_url?: string;
   preview?: boolean;
   honesty?: HonestyMeta;
   project_info: {
@@ -86,6 +87,9 @@ function buildShareText(analysis: AnalysisData): string {
     : `Risk: ${analysis.environmental_screening?.risk_level || 'N/A'}`;
   const timeline = analysis.summary?.estimated_timeline || 'TBD';
   const cost = analysis.summary?.estimated_total_cost;
+  const reportUrl =
+    analysis.share_url ||
+    (analysis.research_id ? `${APP_URL}r/${analysis.research_id}` : APP_URL);
   return [
     `RegGuard site diligence: ${p.address}, ${p.city}, ${p.state} ${p.zip}`,
     risk,
@@ -93,7 +97,7 @@ function buildShareText(analysis: AnalysisData): string {
     cost != null
       ? `Est. cost: $${Number(cost).toLocaleString()}${unverified ? ' (unverified — not an AHJ quote)' : ''}`
       : '',
-    `Try RegGuard free: ${APP_URL}`,
+    `Full report: ${reportUrl}`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -266,6 +270,7 @@ export default function ResultsViewerModal({
           <SendResultsForm
             researchId={effectiveResearchId}
             summary={summary}
+            analysis={analysis}
             defaultEmail={defaultEmail}
             defaultPhone={defaultPhone}
           />
@@ -275,6 +280,29 @@ export default function ResultsViewerModal({
               <Share2 className="w-3.5 h-3.5" />
               Share results
             </p>
+            {(analysis.share_url || effectiveResearchId) && (
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <a
+                  href={analysis.share_url || `${APP_URL}r/${effectiveResearchId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-100 text-sm font-semibold hover:bg-amber-500/20 transition"
+                >
+                  Open bid-file report
+                </a>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const url = analysis.share_url || `${APP_URL}r/${effectiveResearchId}`;
+                    await navigator.clipboard.writeText(url);
+                    showToast('Share link copied — paste into your bid file or GC email');
+                  }}
+                  className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-slate-600 bg-slate-800/80 text-gray-200 text-sm font-semibold hover:bg-slate-700 transition"
+                >
+                  Copy /r/ link
+                </button>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"

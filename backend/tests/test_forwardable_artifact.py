@@ -1,0 +1,109 @@
+"""Forwardable artifact: persist research, full punch email, shareable /r/{id}."""
+
+import sys
+from pathlib import Path
+
+import pytest
+
+BACKEND = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BACKEND))
+
+from instant_analysis import build_instant_fallback_analysis  # noqa: E402
+from report_email import build_forwardable_plaintext, build_forwardable_result_html  # noqa: E402
+from research_store import (  # noqa: E402
+    extract_sources,
+    get_analysis,
+    public_analysis,
+    save_research,
+    share_url_for,
+)
+
+
+@pytest.fixture
+def sample_analysis():
+    a = build_instant_fallback_analysis(
+        "100 Main St, Plano, TX 75074",
+        project_type="electrical",
+        zip_code="75074",
+        city="Plano",
+        state="TX",
+    )
+    a["source_urls"] = [
+        "https://www.plano.gov/permits",
+        {"title": "Municode Plano", "url": "https://library.municode.com/tx/plano"},
+    ]
+    a["email"] = "secret@example.com"
+    a["phone"] = "2145551212"
+    return a
+
+
+def test_persist_and_retrieve_roundtrip(sample_analysis, tmp_path, monkeypatch):
+    monkeypatch.setenv("REG_GUARD_REPORT_DIR", str(tmp_path))
+    meta = save_research(sample_analysis, research_id="ft-testpersist01")
+    assert meta["research_id"] == "ft-testpersist01"
+    assert "/r/ft-testpersist01" in meta["share_url"]
+    loaded = get_analysis("ft-testpersist01")
+    assert loaded is not None
+    assert loaded["project_info"]["city"] == "Plano"
+    assert "email" not in loaded  # PII stripped
+    assert "phone" not in loaded
+    assert loaded["share_url"] == share_url_for("ft-testpersist01")
+
+
+def test_public_analysis_strips_pii(sample_analysis):
+    clean = public_analysis(sample_analysis)
+    assert "email" not in clean
+    assert "phone" not in clean
+    assert clean["project_info"]["address"]
+
+
+def test_forwardable_email_includes_punch_and_sources(sample_analysis, tmp_path, monkeypatch):
+    monkeypatch.setenv("REG_GUARD_REPORT_DIR", str(tmp_path))
+    meta = save_research(sample_analysis, research_id="ft-emailpunch01")
+    analysis = get_analysis(meta["research_id"])
+    html = build_forwardable_result_html(analysis)
+    assert "Full punch list" in html
+    assert "Sources" in html
+    assert "plano.gov" in html.lower() or "municode" in html.lower()
+    assert meta["share_url"] in html
+    text = build_forwardable_plaintext(analysis)
+    assert "PUNCH LIST:" in text
+    assert "Shareable report:" in text
+
+
+def test_extract_sources(sample_analysis):
+    sources = extract_sources(sample_analysis)
+    assert len(sources) >= 2
+    urls = " ".join(s.get("url") or s.get("label") or "" for s in sources)
+    assert "plano.gov" in urls or "municode" in urls
+
+
+def test_missing_report_returns_none(tmp_path, monkeypatch):
+    monkeypatch.setenv("REG_GUARD_REPORT_DIR", str(tmp_path))
+    assert get_analysis("does-not-exist-xyz") is None
+
+
+def test_resolve_prefers_full_analysis(tmp_path, monkeypatch):
+    monkeypatch.setenv("REG_GUARD_REPORT_DIR", str(tmp_path))
+    # Import after env so store dir is respected on first write inside resolve
+    from main import ResearchDeliverySummary, _resolve_research_data
+
+    analysis = build_instant_fallback_analysis("9 Oak, Austin, TX 78704", city="Austin", state="TX")
+    data = _resolve_research_data("ft-resolve01", None, analysis)
+    assert data["research_id"] == "ft-resolve01"
+    assert "/r/ft-resolve01" in data["share_url"]
+    assert len((data.get("punch_list") or {}).get("punch_list") or []) >= 1
+
+    # Summary-only still works
+    summary = ResearchDeliverySummary(
+        city="Austin",
+        state="TX",
+        zip="78704",
+        preview=True,
+        estimates_unverified=True,
+        risk_unavailable=True,
+        cost=100,
+        timeline="30 days",
+    )
+    thin = _resolve_research_data("ft-thin01", summary, None)
+    assert thin["summary"]["estimated_total_cost"] == 100

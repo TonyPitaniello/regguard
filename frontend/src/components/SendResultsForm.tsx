@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'react';
 import { AlertCircle, CheckCircle, Loader, Mail, Phone, MessageSquare } from 'lucide-react';
 import { backendUrl } from '../env';
+import type { AnalysisData } from './ResultsViewerModal';
 
 export interface ResultsSummaryPayload {
   zip?: string;
@@ -24,16 +25,23 @@ export interface ResultsSummaryPayload {
 interface SendResultsFormProps {
   researchId?: string | null;
   summary: ResultsSummaryPayload;
+  analysis?: AnalysisData | null;
   userId?: string;
   defaultEmail?: string;
   defaultPhone?: string;
   compact?: boolean;
 }
 
-function buildTextBody(summary: ResultsSummaryPayload): string {
+function buildTextBody(summary: ResultsSummaryPayload, analysis?: AnalysisData | null): string {
   const unverified = summary.estimates_unverified || summary.preview;
+  const share =
+    analysis?.share_url ||
+    (analysis?.research_id || summary
+      ? `https://app.regguardagent.com/r/${analysis?.research_id || ''}`
+      : 'https://app.regguardagent.com/');
+  const punch = analysis?.punch_list?.punch_list || [];
   const lines = [
-    'RegGuard Site Diligence Summary',
+    'RegGuard Site Diligence Report',
     summary.preview || unverified ? 'NOTE: Preview / unverified estimates — not AHJ quotes' : '',
     summary.address ? `Site: ${summary.address}` : '',
     [summary.city, summary.state, summary.zip].filter(Boolean).join(', '),
@@ -49,7 +57,14 @@ function buildTextBody(summary: ResultsSummaryPayload): string {
       ? `Est. cost: $${Number(summary.cost).toLocaleString()}${unverified ? ' (unverified)' : ''}`
       : '',
     '',
-    'View full app: https://app.regguardagent.com/',
+    'PUNCH LIST:',
+    ...punch.slice(0, 12).map((item, i) => {
+      const cost =
+        item.estimated_cost != null ? ` | $${Number(item.estimated_cost).toLocaleString()}` : '';
+      return `${i + 1}. [${item.priority}] ${item.task}${cost}`;
+    }),
+    '',
+    `Full shareable report: ${share.endsWith('/r/') ? 'https://app.regguardagent.com/' : share}`,
   ].filter(Boolean);
   return lines.join('\n');
 }
@@ -57,6 +72,7 @@ function buildTextBody(summary: ResultsSummaryPayload): string {
 export default function SendResultsForm({
   researchId,
   summary,
+  analysis = null,
   userId,
   defaultEmail = '',
   defaultPhone = '',
@@ -96,19 +112,20 @@ export default function SendResultsForm({
   const buildBody = (extra: Record<string, string>) => ({
     ...extra,
     summary,
+    ...(analysis ? { analysis } : {}),
     ...(userId ? { user_id: userId } : {}),
     ...(researchId ? { research_id: researchId } : {}),
   });
 
   const openNativeSms = (phoneValue: string) => {
     const digits = digitsOnly(phoneValue);
-    const body = encodeURIComponent(buildTextBody(summary));
+    const body = encodeURIComponent(buildTextBody(summary, analysis));
     window.location.href = `sms:+1${digits}?&body=${body}`;
   };
 
   const openNativeEmail = (emailValue: string) => {
-    const subject = encodeURIComponent('RegGuard Site Diligence Results');
-    const body = encodeURIComponent(buildTextBody(summary));
+    const subject = encodeURIComponent('RegGuard Site Diligence Report');
+    const body = encodeURIComponent(buildTextBody(summary, analysis));
     window.location.href = `mailto:${emailValue}?subject=${subject}&body=${body}`;
   };
 
@@ -206,7 +223,8 @@ export default function SendResultsForm({
         <h3 className="text-lg font-black text-white">Text or email these results</h3>
       </div>
       <p className="text-sm text-gray-300">
-        Enter a phone number to text a summary, or an email — both work from this window.
+        Email includes the full punch list + sources + a shareable /r/ link for your GC bid file.
+        Texts send a short summary with the same link.
       </p>
 
       {error && (

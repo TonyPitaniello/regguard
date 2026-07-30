@@ -1361,6 +1361,7 @@ async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
 
     # Honesty safety net: free-trial never returns confident stub risk scores
     from honesty import apply_honesty_layer
+    from research_store import save_research
 
     if not (analysis.get("honesty") or {}).get("risk_verified"):
         analysis = apply_honesty_layer(
@@ -1371,12 +1372,23 @@ async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
             timeline_verified=bool((analysis.get("honesty") or {}).get("timeline_verified")),
         )
 
+    # Persist so shareable /r/{id} works even if the client never calls /research/persist
+    research_id = trial_id or analysis.get("research_id") or analysis.get("timestamp", "preview")
+    try:
+        meta = save_research(analysis, research_id=str(research_id))
+        analysis["research_id"] = meta["research_id"]
+        analysis["share_url"] = meta["share_url"]
+        research_id = meta["research_id"]
+    except Exception as persist_err:
+        logger.warning(f"Free-trial persist failed (non-blocking): {persist_err}")
+
     return {
         "trial_id": trial_id,
         "status": status,
         "message": message,
         "analysis_data": analysis,
-        "research_id": trial_id or analysis.get("timestamp", "preview"),
+        "research_id": research_id,
+        "share_url": analysis.get("share_url"),
     }
 
 
@@ -2994,6 +3006,7 @@ class ResearchDeliverySummary(BaseModel):
 class SendSmsRequest(BaseModel):
     phone_number: str
     summary: Optional[ResearchDeliverySummary] = None
+    analysis: Optional[Dict[str, Any]] = None
     user_id: Optional[str] = None
     research_id: Optional[str] = None
 
@@ -3002,6 +3015,7 @@ class SendEmailRequest(BaseModel):
     email: Optional[str] = None
     email_address: Optional[str] = None
     summary: Optional[ResearchDeliverySummary] = None
+    analysis: Optional[Dict[str, Any]] = None
     user_id: Optional[str] = None
     research_id: Optional[str] = None
 
@@ -3063,16 +3077,34 @@ def _research_data_from_summary(summary: ResearchDeliverySummary) -> Dict[str, A
 def _resolve_research_data(
     research_id: Optional[str],
     summary: Optional[ResearchDeliverySummary],
+    analysis: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    if summary is not None:
-        return _research_data_from_summary(summary)
+    """Prefer full analysis (persist it), then stored report, then lightweight summary."""
+    from research_store import save_research, share_url_for
+
+    if analysis and isinstance(analysis, dict):
+        meta = save_research(analysis, research_id=research_id or analysis.get("research_id"))
+        data = dict(analysis)
+        data["research_id"] = meta["research_id"]
+        data["share_url"] = meta["share_url"]
+        return data
+
     if research_id:
         stored = _get_research_data(research_id)
         if stored:
+            stored.setdefault("share_url", share_url_for(research_id))
             return stored
+
+    if summary is not None:
+        data = _research_data_from_summary(summary)
+        if research_id:
+            data["research_id"] = research_id
+            data["share_url"] = share_url_for(research_id)
+        return data
+
     raise HTTPException(
         status_code=404,
-        detail="Research result not found. Provide a summary payload for free-trial delivery.",
+        detail="Research result not found. Provide analysis or summary for free-trial delivery.",
     )
 
 
@@ -3088,7 +3120,7 @@ async def send_result_sms_standalone(
     try:
         user_id = body.user_id or request.headers.get("X-User-ID") or "anonymous"
         research_id = body.research_id or f"ephemeral-{user_id}"
-        research_data = _resolve_research_data(body.research_id, body.summary)
+        research_data = _resolve_research_data(body.research_id, body.summary, body.analysis)
 
         from result_delivery_service import get_delivery_service
         delivery_service = get_delivery_service(db_pool=None)
@@ -3135,7 +3167,7 @@ async def send_result_email_standalone(
 
         user_id = body.user_id or request.headers.get("X-User-ID") or "anonymous"
         research_id = body.research_id or f"ephemeral-{user_id}"
-        research_data = _resolve_research_data(body.research_id, body.summary)
+        research_data = _resolve_research_data(body.research_id, body.summary, body.analysis)
 
         from result_delivery_service import get_delivery_service
         delivery_service = get_delivery_service(db_pool=None)
@@ -3187,7 +3219,8 @@ async def send_result_sms(
         user_id = body.get("user_id") or request.headers.get("X-User-ID") or "anonymous"
         summary_raw = body.get("summary")
         summary = ResearchDeliverySummary(**summary_raw) if isinstance(summary_raw, dict) else None
-        research_data = _resolve_research_data(research_id, summary)
+        analysis = body.get("analysis") if isinstance(body.get("analysis"), dict) else None
+        research_data = _resolve_research_data(research_id, summary, analysis)
 
         from result_delivery_service import get_delivery_service
         delivery_service = get_delivery_service(db_pool=None)
@@ -3237,7 +3270,8 @@ async def send_result_email(
         user_id = body.get("user_id") or request.headers.get("X-User-ID") or "anonymous"
         summary_raw = body.get("summary")
         summary = ResearchDeliverySummary(**summary_raw) if isinstance(summary_raw, dict) else None
-        research_data = _resolve_research_data(research_id, summary)
+        analysis = body.get("analysis") if isinstance(body.get("analysis"), dict) else None
+        research_data = _resolve_research_data(research_id, summary, analysis)
 
         from result_delivery_service import get_delivery_service
         delivery_service = get_delivery_service(db_pool=None)
@@ -3272,13 +3306,59 @@ async def send_result_email(
 
 
 def _get_research_data(research_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch persisted research analysis by ID (local store + optional Supabase)."""
+    try:
+        from research_store import get_analysis
+
+        return get_analysis(research_id)
+    except Exception as e:
+        logger.warning(f"_get_research_data failed for {research_id}: {e}")
+        return None
+
+
+class PersistResearchRequest(BaseModel):
+    analysis: Dict[str, Any]
+    research_id: Optional[str] = None
+
+
+@app.post("/research/persist", tags=["Results"])
+async def persist_research_report(body: PersistResearchRequest) -> Dict[str, Any]:
     """
-    Fetch research data by ID.
-    In production, this would query the database.
-    For now, returns mock data or None.
+    Persist free-trial / research analysis and return a shareable /r/{id} URL.
+    Safe to call repeatedly for the same research_id (upsert).
     """
-    # TODO: Implement database query
-    return None
+    from research_store import save_research
+
+    if not body.analysis or not isinstance(body.analysis, dict):
+        raise HTTPException(status_code=400, detail="analysis object is required")
+    meta = save_research(body.analysis, research_id=body.research_id)
+    return {"status": "ok", **meta}
+
+
+@app.get("/research/{research_id}/report", tags=["Results"])
+async def get_research_report(research_id: str) -> Dict[str, Any]:
+    """Public JSON for shareable report page /r/{id}."""
+    from research_store import extract_sources, get_research, share_url_for
+
+    record = get_research(research_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Report not found or expired")
+    analysis = record.get("analysis") or {}
+    return {
+        "research_id": record["id"],
+        "share_url": record.get("share_url") or share_url_for(record["id"]),
+        "created_at": record.get("created_at"),
+        "expires_at": record.get("expires_at"),
+        "preview": record.get("preview"),
+        "analysis": analysis,
+        "sources": extract_sources(analysis),
+    }
+
+
+@app.get("/r/{research_id}", tags=["Results"])
+async def get_research_report_short(research_id: str) -> Dict[str, Any]:
+    """Alias for /research/{id}/report (API clients / curl). Frontend uses SPA /r/:id."""
+    return await get_research_report(research_id)
 
 
 def _running_on_vercel() -> bool:
