@@ -108,7 +108,18 @@ async def run_option_a_analysis(
             cost_verified=False,
             timeline_verified=False,
         )
-        logger.info("✅ Option A analysis complete (honesty layer applied)")
+        try:
+            from ahj_catalog import enrich_analysis_with_ahj
+
+            stamped = enrich_analysis_with_ahj(
+                stamped,
+                city=city,
+                state=state,
+                zip_code=zip_code,
+            )
+        except Exception as ahj_err:
+            logger.warning(f"AHJ enrich skipped: {ahj_err}")
+        logger.info("✅ Option A analysis complete (honesty layer + AHJ catalog)")
         return stamped
         
     except Exception as e:

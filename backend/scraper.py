@@ -775,6 +775,19 @@ def _scout_queries_for_location(
     if _is_austin_texas(city, st):
         permits = f"{permits} | {AUSTIN_SCOUT_DEVELOPMENT_FEES_SURCHARGE}"
         codes = f"{codes} | {AUSTIN_SCOUT_DESIGN_CRITERIA_ELECTRICAL}"
+    # Catalog-driven extras (Dallas + any future metros)
+    try:
+        from ahj_catalog import scout_extras_for
+
+        extras = scout_extras_for(city, st, zip_tag if isinstance(zip_tag, str) else "")
+        for q in extras.get("permits") or []:
+            if q and q not in permits:
+                permits = f"{permits} | {q}"
+        for q in extras.get("codes") or []:
+            if q and q not in codes:
+                codes = f"{codes} | {q}"
+    except Exception:
+        pass
     codes = _append_code_change_monitor_queries(
         codes,
         zip_tag=zip_tag,

@@ -52,6 +52,8 @@ export interface AnalysisData {
     estimated_total_cost: number;
     estimates_unverified?: boolean;
     critical_path: string[];
+    inspection_sequence?: string[];
+    ahj_fee_lines?: string[];
     milestones: Array<{ week: string; milestone: string }>;
     who_to_call: Record<string, string>;
   };
@@ -65,6 +67,8 @@ export interface AnalysisData {
     cost_verified?: boolean;
     timeline_verified?: boolean;
     risk_verified?: boolean;
+    ahj_id?: string;
+    inspection_sequence?: string[];
   };
   next_steps: string[];
 }
@@ -467,6 +471,23 @@ export default function ResultsViewerModal({
               </div>
             )}
           </section>
+
+          {/* AHJ inspection sequence (DFW / Austin catalog) */}
+          {(analysis.punch_list?.inspection_sequence || analysis.summary?.inspection_sequence || []).length >
+            0 && (
+            <section className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-4">
+              <h3 className="text-sm font-bold text-gray-300 mb-2">Inspection sequence</h3>
+              <ol className="list-decimal list-inside space-y-1 text-sm text-gray-200">
+                {(
+                  analysis.punch_list?.inspection_sequence ||
+                  analysis.summary?.inspection_sequence ||
+                  []
+                ).map((step, idx) => (
+                  <li key={idx}>{step}</li>
+                ))}
+              </ol>
+            </section>
+          )}
 
           {/* Critical path / punch list highlights */}
           <section>

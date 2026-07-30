@@ -456,10 +456,30 @@ def _build_inspector_digest_directive(
     elif is_austin_tx:
         fee_extra = (
             f" **Reg Guard sync (Austin, TX):** Under **Permit Costs**, use **City of Austin Development Services** fee documentation, including **Safety Surcharges** at "
-            f"**{REG_GUARD_AUSTIN_DEVELOPMENT_SERVICES_FEES_URL}** — confirm calculator outputs against the posted schedule."
+            f"**{REG_GUARD_AUSTIN_DEVELOPMENT_SERVICES_FEES_URL}** — confirm calculator outputs against the posted schedule. **Do not invent dollar amounts.**"
         )
     else:
         fee_extra = " Base technical items on the NEC/adoption language in the digest."
+
+    # Catalog-driven citation rule (Plano / Dallas / Austin + future)
+    try:
+        from ahj_catalog import digest_ahj_block
+
+        _ahj = digest_ahj_block(city, state, zip_project)
+        if _ahj.get("ahj_fee_rule"):
+            fee_extra = (
+                fee_extra
+                + " "
+                + str(_ahj["ahj_fee_rule"])
+                + " Fee lines: "
+                + " | ".join(_ahj.get("ahj_fee_lines") or [])
+            )
+        if _ahj.get("ahj_id") == "dallas_tx":
+            fee_extra += (
+                " **Dallas:** include **$167.00** minimum trade permit with Building Inspection citation."
+            )
+    except Exception:
+        pass
 
     headings_list = [
         "### Permit Costs",
@@ -654,32 +674,70 @@ def build_research_digest(
         payload["empty_scout_nec_2023_fallback"] = True
     if jd_ff:
         payload["job_fast41_eligibility"] = True
-    if city_guess.lower() == "plano" and (state_guess or "").strip().upper() in ("TX",):
-        payload["plano_electrical_permit_fee_sync_usd"] = REG_GUARD_PLANO_ELECTRICAL_PERMIT_TOTAL_USD
-        pf = f"${REG_GUARD_PLANO_ELECTRICAL_PERMIT_TOTAL_USD:.2f}"
-        payload["plano_electrical_permit_fee_2026_note"] = (
-            f"Reg Guard 2026 data fence: City of Plano electrical permit **{pf}** total — **$65.00** base permit + **$10.00** laborer fee. "
-            "Confirm on the official City of Plano fee schedule."
-        )
-        payload["plano_ord_250_50_requirement"] = (
-            "HARD REQUIREMENT (Plano, TX): Under **### Technical Punch List**, include **MANDATORY GOTCHA: Plano Ordinance 250.50** "
-            "with `- [ ]` tasks for **two 8-foot grounding rods** **20 feet** apart **connected by 2/0 AWG** between rods (**not** **6-foot** "
-            f"rod-spacing from generic NEC narrative). Under **Permit Costs**, state the **{pf}** sync fee line."
-        )
-    if city_guess.lower() == "austin" and (state_guess or "").strip().upper() in ("TX",):
-        z = str(raw.get("zip") or ju_blob.get("zip") or "").strip()
-        payload["austin_design_criteria_requirement"] = (
-            "HARD REQUIREMENT (Austin, TX): Under **### Technical Punch List**, **MANDATORY GOTCHA: City of Austin Design Criteria** — "
-            "(1) **36-inch** minimum clearance from **gas relief valves**; (2) **service upgrades:** **225A** interior **panel bus** with **200A** main / **Solar-Ready** "
-            "pattern where Austin **Design Criteria** / **Electrical Service Requirements** apply (verify for **78704** and other **787** Austin ZIPs)."
-        )
-        payload["austin_development_services_fees_url"] = REG_GUARD_AUSTIN_DEVELOPMENT_SERVICES_FEES_URL
-        payload["austin_safety_surcharge_note"] = (
-            "Reg Guard sync: In **Permit Costs**, include **Safety Surcharges** and permit line items from City of Austin **Development Services** fees at "
-            f"{REG_GUARD_AUSTIN_DEVELOPMENT_SERVICES_FEES_URL}."
-        )
-        if z == "78704" or (len(z) == 5 and z.startswith("787")):
-            payload["austin_central_zip_service_upgrade"] = True
+    # Structured AHJ catalog (DFW + Austin) — citation-required fees & inspections
+    try:
+        from ahj_catalog import digest_ahj_block
+
+        ahj_block = digest_ahj_block(city_guess, state_guess, str(raw.get("zip") or ju_blob.get("zip") or ""))
+        if ahj_block:
+            payload.update(ahj_block)
+            # Keep legacy Plano/Austin keys for existing prompt fences
+            if ahj_block.get("ahj_id") == "plano_tx":
+                payload["plano_electrical_permit_fee_sync_usd"] = REG_GUARD_PLANO_ELECTRICAL_PERMIT_TOTAL_USD
+                pf = f"${REG_GUARD_PLANO_ELECTRICAL_PERMIT_TOTAL_USD:.2f}"
+                payload["plano_electrical_permit_fee_2026_note"] = (
+                    f"Reg Guard 2026 data fence: City of Plano electrical permit **{pf}** total — **$65.00** base permit + **$10.00** laborer fee. "
+                    "Confirm on the official City of Plano fee schedule."
+                )
+                payload["plano_ord_250_50_requirement"] = (
+                    "HARD REQUIREMENT (Plano, TX): Under **### Technical Punch List**, include **MANDATORY GOTCHA: Plano Ordinance 250.50** "
+                    "with `- [ ]` tasks for **two 8-foot grounding rods** **20 feet** apart **connected by 2/0 AWG** between rods (**not** **6-foot** "
+                    f"rod-spacing from generic NEC narrative). Under **Permit Costs**, state the **{pf}** sync fee line with citation URL from ahj_fee_lines."
+                )
+            if ahj_block.get("ahj_id") == "austin_tx":
+                z = str(raw.get("zip") or ju_blob.get("zip") or "").strip()
+                payload["austin_design_criteria_requirement"] = (
+                    "HARD REQUIREMENT (Austin, TX): Under **### Technical Punch List**, **MANDATORY GOTCHA: City of Austin Design Criteria** — "
+                    "(1) **36-inch** minimum clearance from **gas relief valves**; (2) **service upgrades:** **225A** interior **panel bus** with **200A** main / **Solar-Ready** "
+                    "pattern where Austin **Design Criteria** / **Electrical Service Requirements** apply (verify for **78704** and other **787** Austin ZIPs)."
+                )
+                payload["austin_development_services_fees_url"] = REG_GUARD_AUSTIN_DEVELOPMENT_SERVICES_FEES_URL
+                payload["austin_safety_surcharge_note"] = (
+                    "Reg Guard sync: In **Permit Costs**, include **Safety Surcharges** and permit line items from City of Austin **Development Services** fees at "
+                    f"{REG_GUARD_AUSTIN_DEVELOPMENT_SERVICES_FEES_URL} — do not invent dollar amounts."
+                )
+                if z == "78704" or (len(z) == 5 and z.startswith("787")):
+                    payload["austin_central_zip_service_upgrade"] = True
+            if ahj_block.get("ahj_id") == "dallas_tx":
+                payload["dallas_min_trade_permit_usd"] = 167.0
+                payload["dallas_min_trade_permit_note"] = (
+                    "HARD REQUIREMENT (Dallas, TX): Under **### Permit Costs**, include **Minimum trade permit $167.00** "
+                    "(2026 Reg Guard sync, incl. admin) with citation to Dallas Building Inspection. "
+                    "Do not invent other Dallas fee dollars without a source URL."
+                )
+            # Merge citation URLs into unique_source_urls
+            merged = list(payload.get("unique_source_urls") or [])
+            for u in ahj_block.get("ahj_citation_urls") or []:
+                if u not in merged:
+                    merged.append(u)
+            payload["unique_source_urls"] = merged
+    except Exception as _ahj_exc:
+        # Never break digest build if catalog missing
+        pass
+    # Dallas Open Data attach (from /research SSE path) — citeable locality context
+    od = raw.get("dallas_open_data")
+    if isinstance(od, dict) and od.get("socrata_url"):
+        payload["dallas_open_data"] = {
+            "source": od.get("source"),
+            "socrata_url": od.get("socrata_url"),
+            "count": od.get("count"),
+            "note": od.get("note"),
+            "permits": (od.get("permits") or [])[:8],
+        }
+        urls = list(payload.get("unique_source_urls") or [])
+        if od["socrata_url"] not in urls:
+            urls.append(od["socrata_url"])
+            payload["unique_source_urls"] = urls
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
@@ -706,6 +764,9 @@ def iter_contractor_action_plan_stream(system_prompt: str, user_digest: str) -> 
                         "`plano_electrical_permit_fee_sync_usd` / `plano_electrical_permit_fee_2026_note`, "
                         "`austin_design_criteria_requirement`, `austin_development_services_fees_url`, `austin_safety_surcharge_note`, "
                         "`austin_central_zip_service_upgrade`, "
+                        "`ahj_fee_table` / `ahj_fee_lines` / `ahj_inspection_sequence` / `ahj_fee_rule` when present "
+                        "(cite those fee lines under **### Permit Costs**; never invent fees not in the digest), "
+                        "`dallas_min_trade_permit_note` / `dallas_open_data` when present, "
                         "`data_center_intelligence` (when present — **May 2026 rescission** posture, **FAST-41 Transparency Project** >100 MW gate, "
                         "**Virginia HB 1515** / **Ohio ballot** flags, **`infrastructure_surcharge_estimate_usd`**, permit conflict, moratorium High Alert), "
                         "`job_fast41_eligibility` when true (follow **### Federal FAST-41 Eligibility** headings in `required_checklist_headings`), "

@@ -190,10 +190,22 @@ def build_instant_fallback_analysis(
             "Upgrade to Contractor Pro ($149/mo) or IC Project Report ($1,500) for full PDF package",
         ],
     }
-    return apply_honesty_layer(
+    stamped = apply_honesty_layer(
         payload,
         source="instant",
         risk_verified=False,
         cost_verified=False,
         timeline_verified=False,
     )
+    try:
+        from ahj_catalog import enrich_analysis_with_ahj
+
+        stamped = enrich_analysis_with_ahj(
+            stamped,
+            city=city,
+            state=state,
+            zip_code=zip_code,
+        )
+    except Exception:
+        pass
+    return stamped

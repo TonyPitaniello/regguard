@@ -28,13 +28,28 @@ def test_instant_fallback_hides_stub_risk_level():
     )
     assert analysis["preview"] is True
     assert analysis["honesty"]["risk_verified"] is False
-    assert analysis["honesty"]["cost_verified"] is False
+    # Plano AHJ catalog may verify the $75 fee line; env risk remains stub-hidden
+    assert analysis["honesty"].get("ahj_catalog") == "plano_tx" or analysis["summary"].get("ahj_id") == "plano_tx"
+    assert analysis["honesty"]["cost_verified"] is True
     assert analysis["environmental_screening"]["risk_level"] == UNAVAILABLE
     assert analysis["summary"]["high_risk_count"] == 0
     assert "unverified" in analysis["summary"]["estimated_timeline"].lower()
     assert analysis_shows_risk_score(analysis) is False
     for finding in analysis["environmental_screening"]["findings"]:
         assert finding["risk_level"] == "PRELIMINARY"
+
+
+def test_instant_fallback_non_catalog_city_cost_unverified():
+    analysis = build_instant_fallback_analysis(
+        "100 Main St, Frisco, TX 75034",
+        project_type="electrical",
+        zip_code="75034",
+        city="Frisco",
+        state="TX",
+    )
+    assert analysis["honesty"]["risk_verified"] is False
+    assert analysis["honesty"]["cost_verified"] is False
+    assert analysis_shows_risk_score(analysis) is False
 
 
 def test_apply_honesty_layer_preserves_verified_risk():

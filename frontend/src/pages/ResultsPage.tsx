@@ -256,6 +256,22 @@ export default function ResultsPage() {
           )}
         </section>
 
+        {(analysis.punch_list?.inspection_sequence || analysis.summary?.inspection_sequence || []).length >
+          0 && (
+          <section className="mb-8 bg-slate-800/40 border border-slate-700/50 rounded-lg p-6">
+            <h2 className="text-xl font-bold text-white mb-3">Inspection sequence</h2>
+            <ol className="list-decimal list-inside space-y-2 text-gray-200">
+              {(
+                analysis.punch_list?.inspection_sequence ||
+                analysis.summary?.inspection_sequence ||
+                []
+              ).map((step, idx) => (
+                <li key={idx}>{step}</li>
+              ))}
+            </ol>
+          </section>
+        )}
+
         <section className="mb-8">
           <button
             onClick={() => toggleSection('punchList')}

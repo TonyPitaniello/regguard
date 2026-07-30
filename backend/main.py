@@ -2584,7 +2584,47 @@ def _iter_research_sse_events(ctx: Dict[str, Any]) -> Iterator[str]:
                 return
 
             raw = final_raw
+            # Dallas Open Data attach when AHJ is City of Dallas
+            try:
+                jblob_od = raw.get("jurisdiction") if isinstance(raw.get("jurisdiction"), dict) else {}
+                city_for_od = str(jblob_od.get("city") or raw.get("city") or "")
+                state_for_od = str(jblob_od.get("state") or raw.get("state") or "")
+                if city_for_od.strip().lower() == "dallas" and state_for_od.strip().upper() in ("TX", "TEXAS", ""):
+                    from dallas_open_data import fetch_dallas_commercial_permits
+
+                    addr_hint = str(raw.get("site_address") or raw.get("address") or "")
+                    dallas_od = fetch_dallas_commercial_permits(address_hint=addr_hint)
+                    raw["dallas_open_data"] = dallas_od
+                    yield _safe_sse_data_frame(
+                        {
+                            "event": "dallas_open_data",
+                            "source": dallas_od.get("source"),
+                            "count": dallas_od.get("count"),
+                            "socrata_url": dallas_od.get("socrata_url"),
+                        }
+                    )
+            except Exception as od_err:
+                logger.warning(f"Dallas Open Data attach skipped: {od_err}")
+
             source_urls = filter_source_urls(_collect_source_urls(raw))
+            try:
+                from ahj_catalog import citation_urls, lookup_ahj
+
+                jblob = raw.get("jurisdiction") if isinstance(raw.get("jurisdiction"), dict) else {}
+                ahj = lookup_ahj(
+                    str(jblob.get("city") or raw.get("city") or ""),
+                    str(jblob.get("state") or raw.get("state") or ""),
+                    str(zip_for_scout or ""),
+                )
+                if ahj:
+                    for u in citation_urls(ahj):
+                        if u not in source_urls:
+                            source_urls.append(u)
+                od_url = (raw.get("dallas_open_data") or {}).get("socrata_url")
+                if od_url and od_url not in source_urls:
+                    source_urls.append(od_url)
+            except Exception as cite_err:
+                logger.warning(f"AHJ citation merge skipped: {cite_err}")
             try:
                 save_scout_snapshot(str(raw.get("zip") or zip_for_scout), raw)
             except (ValueError, OSError) as ex:

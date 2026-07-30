@@ -1,0 +1,48 @@
+{
+  "cases": [
+    {
+      "id": "plano_electrical_75",
+      "city": "Plano",
+      "state": "TX",
+      "zip": "75074",
+      "expect_ahj_id": "plano_tx",
+      "expect_fee_amount_usd": 75.0,
+      "expect_fee_contains": "$75.00",
+      "expect_gotcha_contains": "250.50",
+      "expect_citation_substr": "plano.gov",
+      "expect_inspection_min_steps": 3
+    },
+    {
+      "id": "dallas_min_trade_167",
+      "city": "Dallas",
+      "state": "TX",
+      "zip": "75201",
+      "expect_ahj_id": "dallas_tx",
+      "expect_fee_amount_usd": 167.0,
+      "expect_fee_contains": "$167.00",
+      "expect_citation_substr": "dallascityhall.com",
+      "expect_open_data_url_substr": "7vsc-id2i",
+      "expect_inspection_min_steps": 3
+    },
+    {
+      "id": "austin_design_criteria_no_invented_fees",
+      "city": "Austin",
+      "state": "TX",
+      "zip": "78704",
+      "expect_ahj_id": "austin_tx",
+      "expect_amount_requires_schedule": true,
+      "expect_fee_contains": "official schedule",
+      "expect_design_criteria_url_substr": "austintexas.gov",
+      "expect_gotcha_contains": "36-inch",
+      "expect_inspection_min_steps": 3
+    },
+    {
+      "id": "lake_dallas_not_dallas",
+      "city": "Lake Dallas",
+      "state": "TX",
+      "zip": "75065",
+      "expect_ahj_id": null,
+      "must_not_resolve_to": "dallas_tx"
+    }
+  ]
+}
