@@ -15,9 +15,9 @@ const TIERS = [
     billing: 'Free lead magnet',
     description: 'Screen a site with no credit card. Results open in-app.',
     features: [
-      'Free site diligence lookup',
-      'Environmental risk summary',
-      'Punch list highlights',
+      'Free site diligence lookup (preview)',
+      'Preliminary checklist — risk scores labeled unverified',
+      'Punch list highlights with estimate badges',
       'Text or email your results',
     ],
     cta: 'Try Free',
@@ -45,7 +45,7 @@ const TIERS = [
     name: 'IC Project Report',
     price: '$1,500',
     billing: 'one-time per project',
-    description: 'Complete deliverable for a single interconnection project.',
+    description: 'Complete deliverable for a single interconnection project (research memo — not live RTO queue data).',
     features: [
       'Full research memo (PDF)',
       'Contractor punch list (PDF)',
@@ -65,7 +65,7 @@ const TIERS = [
     features: [
       'Unlimited project reports',
       'Priority same-day turnaround',
-      'Portfolio monitoring alerts',
+      'Portfolio monitoring alerts (when live data available)',
       'Dedicated account support',
     ],
     cta: 'Subscribe Annually',

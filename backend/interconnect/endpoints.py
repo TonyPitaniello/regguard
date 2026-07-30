@@ -20,6 +20,22 @@ from interconnect.compliance_checker import create_compliance_checker
 
 logger = logging.getLogger(__name__)
 
+
+def _require_ic_demo_enabled() -> None:
+    """IC queue endpoints are demo stubs — off in prod unless REG_GUARD_IC_DEMO=1."""
+    from honesty import is_ic_demo_enabled
+
+    if not is_ic_demo_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "IC Queue demo is disabled in production. "
+                "Set REG_GUARD_IC_DEMO=1 only for intentional demo environments. "
+                "These endpoints return synthetic queue data, not live RTO filings."
+            ),
+        )
+
+
 class FERCAutoFillRequest(BaseModel):
     form_type: str
     project_text: str
@@ -46,6 +62,7 @@ async def auto_fill_ferc_form(
     request: Request,
 ) -> FERCAutoFillResponse:
     """Auto-fill FERC form from project data."""
+    _require_ic_demo_enabled()
     try:
         submission_id = f"queue_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
         
@@ -91,15 +108,29 @@ async def auto_fill_ferc_form(
 
 @router.get("/history")
 async def get_user_submissions(request: Request, limit: int = 10, offset: int = 0) -> Dict[str, Any]:
-    return {"submissions": [], "total": 0, "limit": limit, "offset": offset}
+    _require_ic_demo_enabled()
+    return {"submissions": [], "total": 0, "limit": limit, "offset": offset, "demo": True}
 
 @router.get("/status/{submission_id}")
 async def get_submission_status(submission_id: str, request: Request) -> Dict[str, Any]:
-    return {"submission_id": submission_id, "status": "draft", "created_at": datetime.now().isoformat()}
+    _require_ic_demo_enabled()
+    return {
+        "submission_id": submission_id,
+        "status": "draft",
+        "created_at": datetime.now().isoformat(),
+        "demo": True,
+    }
 
 @router.get("/stats")
 async def get_queue_stats(request: Request) -> Dict[str, Any]:
-    return {"total_submissions": 0, "successful_fills": 0, "average_accuracy": 0.0, "forms_pending_submission": 0}
+    _require_ic_demo_enabled()
+    return {
+        "total_submissions": 0,
+        "successful_fills": 0,
+        "average_accuracy": 0.0,
+        "forms_pending_submission": 0,
+        "demo": True,
+    }
 
 # ─── Phase 0.1: Queue Monitoring ───────────────────────────────────────────
 
@@ -118,7 +149,8 @@ class QueueMonitorResponse(BaseModel):
 
 @router.post("/monitor-queue", response_model=QueueMonitorResponse)
 async def monitor_queue(req: QueueMonitorRequest, request: Request) -> QueueMonitorResponse:
-    """Track interconnection queue position and alerts."""
+    """Track interconnection queue position and alerts. DEMO DATA ONLY."""
+    _require_ic_demo_enabled()
     try:
         monitor = create_queue_monitor()
         tracking_id = f"track_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -130,6 +162,11 @@ async def monitor_queue(req: QueueMonitorRequest, request: Request) -> QueueMoni
             current_phase="queue_received",
             queue_position=42,
             alerts=[
+                {
+                    "type": "warning",
+                    "title": "DEMO — NOT LIVE RTO DATA",
+                    "description": "Synthetic queue position 42. Do not use for investment decisions.",
+                },
                 {"type": "milestone", "title": "Queue Position Updated", "description": f"Your project is at position 42 in the {req.rto} queue"},
                 {"type": "deadline", "title": "Study Phase", "description": "Expect system impact study results in 45 days"}
             ]
@@ -152,7 +189,8 @@ class StudyTranslatorResponse(BaseModel):
 
 @router.post("/translate-study", response_model=StudyTranslatorResponse)
 async def translate_study(req: StudyTranslatorRequest, request: Request) -> StudyTranslatorResponse:
-    """Parse interconnection study and extract key findings."""
+    """Parse interconnection study and extract key findings. DEMO DATA ONLY."""
+    _require_ic_demo_enabled()
     try:
         translator = create_study_translator()
         study_id = f"study_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -193,7 +231,8 @@ class TimelinePredictionResponse(BaseModel):
 
 @router.post("/predict-timeline", response_model=TimelinePredictionResponse)
 async def predict_timeline(req: TimelinePredictionRequest, request: Request) -> TimelinePredictionResponse:
-    """Predict interconnection timeline based on project characteristics."""
+    """Predict interconnection timeline based on project characteristics. DEMO DATA ONLY."""
+    _require_ic_demo_enabled()
     try:
         predictor = create_timeline_predictor()
         prediction_id = f"pred_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -239,7 +278,8 @@ class ComplianceChecklistResponse(BaseModel):
 
 @router.post("/compliance-checklist", response_model=ComplianceChecklistResponse)
 async def generate_compliance_checklist(req: ComplianceChecklistRequest, request: Request) -> ComplianceChecklistResponse:
-    """Generate site compliance checklist for interconnection project."""
+    """Generate site compliance checklist for interconnection project. DEMO DATA ONLY."""
+    _require_ic_demo_enabled()
     try:
         checker = create_compliance_checker()
         checklist_id = f"comp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"

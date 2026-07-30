@@ -13,3 +13,5 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
+      - key: REG_GUARD_IC_DEMO
+        value: "0"

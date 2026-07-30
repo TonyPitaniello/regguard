@@ -21,3 +21,11 @@ export function backendUrl(path: string): string {
   const backendOrigin = import.meta.env.VITE_BACKEND_ORIGIN || 'https://regguard-api.onrender.com';
   return `${backendOrigin}${p}`;
 }
+
+/**
+ * IC Queue demo UI/API is off unless explicitly enabled.
+ * Mirror backend REG_GUARD_IC_DEMO=1 with VITE_REG_GUARD_IC_DEMO=1.
+ */
+export function isIcDemoEnabled(): boolean {
+  return String(import.meta.env.VITE_REG_GUARD_IC_DEMO || '0').trim() === '1';
+}

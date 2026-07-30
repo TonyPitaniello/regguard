@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 import re
 
+from honesty import apply_honesty_layer
+
 
 def _parse_address(address: str, zip_hint: str = "") -> Dict[str, str]:
     city, state, zip_code = "Unknown", "US", zip_hint or ""
@@ -109,6 +111,7 @@ def build_instant_fallback_analysis(
             "responsible_party": "Project owner / permitting lead",
             "timeline": "Week 1",
             "estimated_cost": 500,
+            "cost_verified": False,
             "notes": "Instant preview — deepen with full research package",
         },
         {
@@ -117,6 +120,7 @@ def build_instant_fallback_analysis(
             "responsible_party": "Electrical / IC consultant",
             "timeline": "Week 1–2",
             "estimated_cost": 1500,
+            "cost_verified": False,
             "notes": f"Project type: {project_type}",
         },
         {
@@ -125,6 +129,7 @@ def build_instant_fallback_analysis(
             "responsible_party": "Design engineer",
             "timeline": "Week 2–4",
             "estimated_cost": 5000,
+            "cost_verified": False,
             "notes": "Required for most utility + AHJ packages",
         },
         {
@@ -133,11 +138,12 @@ def build_instant_fallback_analysis(
             "responsible_party": "Environmental consultant",
             "timeline": "Week 2–6",
             "estimated_cost": 3000,
+            "cost_verified": False,
             "notes": "Upgrade for full screening detail",
         },
     ]
 
-    return {
+    payload = {
         "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "preview": True,
         "project_info": {
@@ -149,7 +155,7 @@ def build_instant_fallback_analysis(
             "coordinates": {"latitude": latitude, "longitude": longitude},
         },
         "environmental_screening": {
-            "risk_level": "MEDIUM",
+            "risk_level": "UNAVAILABLE",
             "findings": findings,
             "total_research_cost": 0,
             "action_plan": [a for f in findings for a in f["action_items"][:1]],
@@ -158,6 +164,7 @@ def build_instant_fallback_analysis(
             "punch_list": punch_items,
             "timeline_summary": "30–120 days (instant estimate)",
             "estimated_total_cost": sum(i.get("estimated_cost", 0) for i in punch_items),
+            "estimates_unverified": True,
             "critical_path": [i["task"] for i in punch_items if i["priority"] == "HIGH"],
             "milestones": [
                 {"week": "1", "milestone": "AHJ + utility contacts confirmed"},
@@ -171,14 +178,22 @@ def build_instant_fallback_analysis(
         },
         "summary": {
             "total_environmental_risks": len(findings),
-            "high_risk_count": sum(1 for f in findings if f["risk_level"] in ["HIGH", "CRITICAL"]),
+            "high_risk_count": 0,
             "total_punch_list_items": len(punch_items),
             "estimated_timeline": "30–120 days (instant estimate)",
             "estimated_total_cost": sum(i.get("estimated_cost", 0) for i in punch_items),
+            "estimates_unverified": True,
         },
         "next_steps": [
-            "Review the findings in this window",
+            "Review the findings in this window (preview — not verified parcel risk)",
             "Text or email yourself a copy from the form below",
             "Upgrade to Contractor Pro ($149/mo) or IC Project Report ($1,500) for full PDF package",
         ],
     }
+    return apply_honesty_layer(
+        payload,
+        source="instant",
+        risk_verified=False,
+        cost_verified=False,
+        timeline_verified=False,
+    )

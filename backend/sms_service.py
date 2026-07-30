@@ -109,23 +109,37 @@ class TwilioSMSService(SMSService):
         high_risk = summary.get("high_risk_count", 0)
         total_cost = summary.get("estimated_total_cost", 0)
         timeline = summary.get("estimated_timeline", "TBD")
+        honesty = research_data.get("honesty") or {}
+        unverified = (
+            research_data.get("preview")
+            or summary.get("estimates_unverified")
+            or not honesty.get("cost_verified")
+        )
+        risk_verified = honesty.get("risk_verified") is True
+        cost_tag = "~" if unverified else ""
+        risk_line = (
+            f"⚠️  {high_risk} High Risks\n"
+            if risk_verified
+            else "Risk score: unavailable (preview)\n"
+        )
 
         # Build concise message - aim for 160 chars for single SMS
         message = (
             f"RegGuard: {city}, {state} {zip_code}\n"
-            f"⚠️  {high_risk} High Risks\n"
-            f"💰 ${total_cost:,.0f}\n"
+            f"{risk_line}"
+            f"💰 {cost_tag}${total_cost:,.0f}"
+            f"{' (est.)' if unverified else ''}\n"
             f"⏱️  {timeline}\n"
-            f"View full report: regguard.io"
+            f"View: app.regguardagent.com"
         )
 
         # If message is too long, shorten further
         if len(message) > 160:
             message = (
                 f"RegGuard {city}, {state}\n"
-                f"Risks: {high_risk} | Cost: ${total_cost:,.0f}\n"
-                f"Timeline: {timeline}\n"
-                f"regguard.io"
+                f"{'Preview est.' if unverified else 'Cost'}: {cost_tag}${total_cost:,.0f}\n"
+                f"{timeline}\n"
+                f"app.regguardagent.com"
             )
 
         return message

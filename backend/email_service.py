@@ -186,6 +186,28 @@ RegGuard © 2026
         total_cost = summary.get("estimated_total_cost", 0)
         timeline = summary.get("estimated_timeline", "")
         total_items = summary.get("total_punch_list_items", 0)
+        honesty = research_data.get("honesty") or {}
+        unverified = (
+            research_data.get("preview")
+            or summary.get("estimates_unverified")
+            or not honesty.get("cost_verified")
+        )
+        risk_verified = honesty.get("risk_verified") is True
+        cost_label = "Est. Total Cost (unverified)" if unverified else "Est. Total Cost"
+        timeline_label = "Timeline (unverified)" if unverified else "Timeline"
+        honesty_banner = ""
+        if unverified or not risk_verified:
+            honesty_banner = (
+                '<tr><td style="padding: 16px 30px; background: #fff7ed; border-bottom: 1px solid #fed7aa;">'
+                '<p style="margin: 0; font-size: 13px; color: #9a3412; line-height: 1.5;">'
+                '<strong>Preview / unverified estimates.</strong> '
+                'Environmental risk scores are not parcel-verified GIS data. '
+                'Dollar and day figures are not AHJ quotes — confirm before bidding.'
+                '</p></td></tr>'
+            )
+        risk_items_label = "High Risk Items" if risk_verified else "Risk score"
+        risk_items_value = high_risk if risk_verified else "Unavailable"
+        risk_items_color = "#dc2626" if risk_verified else "#9a3412"
 
         return f"""
 <!DOCTYPE html>
@@ -218,6 +240,7 @@ RegGuard © 2026
                         </td>
                     </tr>
                     
+                    {honesty_banner}
                     <!-- Risk Summary -->
                     <tr>
                         <td style="padding: 30px; border-bottom: 1px solid #e5e7eb;">
@@ -229,17 +252,17 @@ RegGuard © 2026
                                         <p style="margin: 5px 0 0 0; font-size: 18px; color: #1f2937; font-weight: 600;">{total_risks}</p>
                                     </td>
                                     <td style="padding: 12px 0 12px 20px; border-bottom: 1px solid #f0f0f0; text-align: right;">
-                                        <span style="font-size: 13px; color: #dc2626;">High Risk Items</span>
-                                        <p style="margin: 5px 0 0 0; font-size: 18px; color: #dc2626; font-weight: 600;">{high_risk}</p>
+                                        <span style="font-size: 13px; color: {risk_items_color};">{risk_items_label}</span>
+                                        <p style="margin: 5px 0 0 0; font-size: 18px; color: {risk_items_color}; font-weight: 600;">{risk_items_value}</p>
                                     </td>
                                 </tr>
                                 <tr>
                                     <td style="padding: 12px 0;">
-                                        <span style="font-size: 13px; color: #6b7280;">Timeline</span>
+                                        <span style="font-size: 13px; color: #6b7280;">{timeline_label}</span>
                                         <p style="margin: 5px 0 0 0; font-size: 16px; color: #1f2937; font-weight: 500;">{timeline}</p>
                                     </td>
                                     <td style="padding: 12px 0 0 20px; text-align: right;">
-                                        <span style="font-size: 13px; color: #6b7280;">Est. Total Cost</span>
+                                        <span style="font-size: 13px; color: #6b7280;">{cost_label}</span>
                                         <p style="margin: 5px 0 0 0; font-size: 18px; color: #059669; font-weight: 600;">${total_cost:,.0f}</p>
                                     </td>
                                 </tr>
@@ -521,6 +544,28 @@ class ResendEmailService(EmailService):
         total_cost = summary.get("estimated_total_cost", 0)
         timeline = summary.get("estimated_timeline", "")
         total_items = summary.get("total_punch_list_items", 0)
+        honesty = research_data.get("honesty") or {}
+        unverified = (
+            research_data.get("preview")
+            or summary.get("estimates_unverified")
+            or not honesty.get("cost_verified")
+        )
+        risk_verified = honesty.get("risk_verified") is True
+        cost_label = "Est. Total Cost (unverified)" if unverified else "Est. Total Cost"
+        timeline_label = "Timeline (unverified)" if unverified else "Timeline"
+        honesty_banner = ""
+        if unverified or not risk_verified:
+            honesty_banner = (
+                '<tr><td style="padding: 16px 30px; background: #fff7ed; border-bottom: 1px solid #fed7aa;">'
+                '<p style="margin: 0; font-size: 13px; color: #9a3412; line-height: 1.5;">'
+                '<strong>Preview / unverified estimates.</strong> '
+                'Environmental risk scores are not parcel-verified GIS data. '
+                'Dollar and day figures are not AHJ quotes — confirm before bidding.'
+                '</p></td></tr>'
+            )
+        risk_items_label = "High Risk Items" if risk_verified else "Risk score"
+        risk_items_value = high_risk if risk_verified else "Unavailable"
+        risk_items_color = "#dc2626" if risk_verified else "#9a3412"
 
         return f"""
 <!DOCTYPE html>
@@ -553,6 +598,7 @@ class ResendEmailService(EmailService):
                         </td>
                     </tr>
                     
+                    {honesty_banner}
                     <!-- Risk Summary -->
                     <tr>
                         <td style="padding: 30px; border-bottom: 1px solid #e5e7eb;">
@@ -564,17 +610,17 @@ class ResendEmailService(EmailService):
                                         <p style="margin: 5px 0 0 0; font-size: 18px; color: #1f2937; font-weight: 600;">{total_risks}</p>
                                     </td>
                                     <td style="padding: 12px 0 12px 20px; border-bottom: 1px solid #f0f0f0; text-align: right;">
-                                        <span style="font-size: 13px; color: #dc2626;">High Risk Items</span>
-                                        <p style="margin: 5px 0 0 0; font-size: 18px; color: #dc2626; font-weight: 600;">{high_risk}</p>
+                                        <span style="font-size: 13px; color: {risk_items_color};">{risk_items_label}</span>
+                                        <p style="margin: 5px 0 0 0; font-size: 18px; color: {risk_items_color}; font-weight: 600;">{risk_items_value}</p>
                                     </td>
                                 </tr>
                                 <tr>
                                     <td style="padding: 12px 0;">
-                                        <span style="font-size: 13px; color: #6b7280;">Timeline</span>
+                                        <span style="font-size: 13px; color: #6b7280;">{timeline_label}</span>
                                         <p style="margin: 5px 0 0 0; font-size: 16px; color: #1f2937; font-weight: 500;">{timeline}</p>
                                     </td>
                                     <td style="padding: 12px 0 0 20px; text-align: right;">
-                                        <span style="font-size: 13px; color: #6b7280;">Est. Total Cost</span>
+                                        <span style="font-size: 13px; color: #6b7280;">{cost_label}</span>
                                         <p style="margin: 5px 0 0 0; font-size: 18px; color: #059669; font-weight: 600;">${total_cost:,.0f}</p>
                                     </td>
                                 </tr>

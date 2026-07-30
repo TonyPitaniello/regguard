@@ -13,9 +13,12 @@ export interface ResultsSummaryPayload {
   city?: string;
   state?: string;
   risk_level?: string;
+  risk_unavailable?: boolean;
   timeline?: string;
   cost?: number;
   address?: string;
+  estimates_unverified?: boolean;
+  preview?: boolean;
 }
 
 interface SendResultsFormProps {
@@ -28,13 +31,23 @@ interface SendResultsFormProps {
 }
 
 function buildTextBody(summary: ResultsSummaryPayload): string {
+  const unverified = summary.estimates_unverified || summary.preview;
   const lines = [
     'RegGuard Site Diligence Summary',
+    summary.preview || unverified ? 'NOTE: Preview / unverified estimates — not AHJ quotes' : '',
     summary.address ? `Site: ${summary.address}` : '',
     [summary.city, summary.state, summary.zip].filter(Boolean).join(', '),
-    summary.risk_level ? `Risk: ${summary.risk_level}` : '',
-    summary.timeline ? `Timeline: ${summary.timeline}` : '',
-    summary.cost != null ? `Est. cost: $${Number(summary.cost).toLocaleString()}` : '',
+    summary.risk_unavailable
+      ? 'Risk score: unavailable (not parcel-verified)'
+      : summary.risk_level
+        ? `Risk: ${summary.risk_level}`
+        : '',
+    summary.timeline
+      ? `Timeline: ${summary.timeline}${unverified && !String(summary.timeline).toLowerCase().includes('unverified') ? ' (unverified)' : ''}`
+      : '',
+    summary.cost != null
+      ? `Est. cost: $${Number(summary.cost).toLocaleString()}${unverified ? ' (unverified)' : ''}`
+      : '',
     '',
     'View full app: https://app.regguardagent.com/',
   ].filter(Boolean);

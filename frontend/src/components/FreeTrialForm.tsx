@@ -10,6 +10,7 @@ import { LocationPicker } from './LocationPicker';
 import { backendUrl } from '../env';
 import ResultsViewerModal, { AnalysisData } from './ResultsViewerModal';
 import { buildClientInstantAnalysis } from './buildClientInstantAnalysis';
+import { ensureClientHonesty } from './ensureClientHonesty';
 import {
   VOICE_FILL_EVENT,
   VOICE_SUBMIT_EVENT,
@@ -80,13 +81,13 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
   };
 
   const showResults = useCallback((analysisPayload: AnalysisData, id: string, email?: string) => {
-    const analysisWithId: AnalysisData = { ...analysisPayload, research_id: id };
-    sessionStorage.setItem('analysisResults', JSON.stringify(analysisWithId));
+    const honest = ensureClientHonesty({ ...analysisPayload, research_id: id });
+    sessionStorage.setItem('analysisResults', JSON.stringify(honest));
     sessionStorage.setItem('researchId', id);
     const mail = email || formDataRef.current.email;
     if (mail) sessionStorage.setItem('userEmail', mail);
     setResearchId(id);
-    setAnalysis(analysisWithId);
+    setAnalysis(honest);
     setResultsOpen(true);
   }, []);
 

@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { X, ChevronDown, ChevronUp, Copy, Check, Share2 } from 'lucide-react';
 import SendResultsForm, { ResultsSummaryPayload } from './SendResultsForm';
+import { areEstimatesUnverified, isRiskScoreHidden, type HonestyMeta } from './honesty';
 
 const APP_URL = 'https://app.regguardagent.com/';
 
@@ -13,6 +14,7 @@ export interface AnalysisData {
   timestamp: string;
   research_id?: string;
   preview?: boolean;
+  honesty?: HonestyMeta;
   project_info: {
     address: string;
     city: string;
@@ -23,6 +25,7 @@ export interface AnalysisData {
   };
   environmental_screening: {
     risk_level: string;
+    risk_score_hidden?: boolean;
     findings: Array<{
       category: string;
       risk_level: string;
@@ -41,10 +44,12 @@ export interface AnalysisData {
       responsible_party: string;
       timeline: string;
       estimated_cost?: number;
+      cost_verified?: boolean;
       notes: string;
     }>;
     timeline_summary: string;
     estimated_total_cost: number;
+    estimates_unverified?: boolean;
     critical_path: string[];
     milestones: Array<{ week: string; milestone: string }>;
     who_to_call: Record<string, string>;
@@ -55,6 +60,10 @@ export interface AnalysisData {
     total_punch_list_items: number;
     estimated_timeline: string;
     estimated_total_cost: number;
+    estimates_unverified?: boolean;
+    cost_verified?: boolean;
+    timeline_verified?: boolean;
+    risk_verified?: boolean;
   };
   next_steps: string[];
 }
@@ -70,14 +79,20 @@ interface ResultsViewerModalProps {
 
 function buildShareText(analysis: AnalysisData): string {
   const p = analysis.project_info;
-  const risk = analysis.environmental_screening?.risk_level || 'N/A';
+  const hideRisk = isRiskScoreHidden(analysis);
+  const unverified = areEstimatesUnverified(analysis);
+  const risk = hideRisk
+    ? 'Risk score unavailable (preview — not for bidding)'
+    : `Risk: ${analysis.environmental_screening?.risk_level || 'N/A'}`;
   const timeline = analysis.summary?.estimated_timeline || 'TBD';
   const cost = analysis.summary?.estimated_total_cost;
   return [
     `RegGuard site diligence: ${p.address}, ${p.city}, ${p.state} ${p.zip}`,
-    `Risk: ${risk}`,
-    `Timeline: ${timeline}`,
-    cost != null ? `Est. cost: $${Number(cost).toLocaleString()}` : '',
+    risk,
+    `Timeline: ${timeline}${unverified && !String(timeline).toLowerCase().includes('unverified') ? ' (unverified)' : ''}`,
+    cost != null
+      ? `Est. cost: $${Number(cost).toLocaleString()}${unverified ? ' (unverified — not an AHJ quote)' : ''}`
+      : '',
     `Try RegGuard free: ${APP_URL}`,
   ]
     .filter(Boolean)
@@ -115,14 +130,19 @@ function getPriorityBadge(priority: string) {
 }
 
 export function buildSummaryFromAnalysis(analysis: AnalysisData): ResultsSummaryPayload {
+  const hideRisk = isRiskScoreHidden(analysis);
+  const unverified = areEstimatesUnverified(analysis);
   return {
     zip: analysis.project_info?.zip,
     city: analysis.project_info?.city,
     state: analysis.project_info?.state,
     address: analysis.project_info?.address,
-    risk_level: analysis.environmental_screening?.risk_level,
+    risk_level: hideRisk ? undefined : analysis.environmental_screening?.risk_level,
+    risk_unavailable: hideRisk,
     timeline: analysis.summary?.estimated_timeline,
     cost: analysis.summary?.estimated_total_cost,
+    estimates_unverified: unverified,
+    preview: Boolean(analysis.preview),
   };
 }
 
@@ -157,6 +177,9 @@ export default function ResultsViewerModal({
   const summary = buildSummaryFromAnalysis(analysis);
   const effectiveResearchId = researchId || analysis.research_id || null;
   const shareText = buildShareText(analysis);
+  const hideRisk = isRiskScoreHidden(analysis);
+  const unverifiedEstimates = areEstimatesUnverified(analysis);
+  const honestyLabels = analysis.honesty?.labels;
 
   const toggle = (key: keyof typeof expanded) => {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -222,6 +245,11 @@ export default function ResultsViewerModal({
               {analysis.project_info.address} • {analysis.project_info.city},{' '}
               {analysis.project_info.state} {analysis.project_info.zip}
             </p>
+            {(analysis.preview || hideRisk || unverifiedEstimates) && (
+              <p className="mt-2 inline-flex items-center rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-200">
+                Preview — unverified estimates · not AHJ quotes
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -296,41 +324,60 @@ export default function ResultsViewerModal({
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-5 sm:px-8 py-6 space-y-6">
+          {(hideRisk || unverifiedEstimates) && (
+            <div
+              className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+              role="status"
+            >
+              <p className="font-semibold text-amber-50 mb-1">Honesty notice</p>
+              <p>{honestyLabels?.risk || 'Environmental risk scores are not parcel-verified GIS data. Do not use for bidding.'}</p>
+              <p className="mt-1">{honestyLabels?.cost || 'Dollar and day figures are unverified estimates — confirm with the AHJ.'}</p>
+            </div>
+          )}
+
           {/* Summary cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="bg-blue-600/20 border border-blue-500/30 rounded-lg p-4">
               <div className="text-2xl font-black text-blue-400">
                 {analysis.summary.total_environmental_risks}
               </div>
-              <p className="text-gray-300 text-sm">Environmental Issues</p>
+              <p className="text-gray-300 text-sm">Checklist topics</p>
             </div>
             <div className="bg-orange-600/20 border border-orange-500/30 rounded-lg p-4">
               <div className="text-2xl font-black text-orange-400">
-                {analysis.summary.high_risk_count}
+                {hideRisk ? '—' : analysis.summary.high_risk_count}
               </div>
-              <p className="text-gray-300 text-sm">High/Critical Risks</p>
+              <p className="text-gray-300 text-sm">
+                {hideRisk ? 'Verified high risks' : 'High/Critical Risks'}
+              </p>
             </div>
             <div
               className={`border rounded-lg p-4 ${
-                analysis.environmental_screening.risk_level === 'LOW'
-                  ? 'bg-green-600/20 border-green-500/30'
-                  : analysis.environmental_screening.risk_level === 'MEDIUM'
-                    ? 'bg-yellow-600/20 border-yellow-500/30'
-                    : 'bg-red-600/20 border-red-500/30'
+                hideRisk
+                  ? 'bg-amber-600/20 border-amber-500/30'
+                  : analysis.environmental_screening.risk_level === 'LOW'
+                    ? 'bg-green-600/20 border-green-500/30'
+                    : analysis.environmental_screening.risk_level === 'MEDIUM'
+                      ? 'bg-yellow-600/20 border-yellow-500/30'
+                      : 'bg-red-600/20 border-red-500/30'
               }`}
             >
               <div
                 className={`text-xl font-black ${
-                  analysis.environmental_screening.risk_level === 'LOW'
-                    ? 'text-green-400'
-                    : analysis.environmental_screening.risk_level === 'MEDIUM'
-                      ? 'text-yellow-400'
-                      : 'text-red-400'
+                  hideRisk
+                    ? 'text-amber-300'
+                    : analysis.environmental_screening.risk_level === 'LOW'
+                      ? 'text-green-400'
+                      : analysis.environmental_screening.risk_level === 'MEDIUM'
+                        ? 'text-yellow-400'
+                        : 'text-red-400'
                 }`}
               >
-                {analysis.environmental_screening.risk_level} Risk
+                {hideRisk ? 'Unavailable' : `${analysis.environmental_screening.risk_level} Risk`}
               </div>
-              <p className="text-gray-300 text-sm">Overall Assessment</p>
+              <p className="text-gray-300 text-sm">
+                {hideRisk ? 'Risk score (not verified)' : 'Overall Assessment'}
+              </p>
             </div>
           </div>
 
@@ -341,7 +388,9 @@ export default function ResultsViewerModal({
               onClick={() => toggle('environmental')}
               className="w-full flex items-center justify-between bg-purple-600/20 border border-purple-500/30 rounded-lg p-4 mb-3"
             >
-              <h3 className="text-lg font-bold text-white">Environmental Findings</h3>
+              <h3 className="text-lg font-bold text-white">
+                {hideRisk ? 'Preliminary checklist notes' : 'Environmental Findings'}
+              </h3>
               {expanded.environmental ? (
                 <ChevronUp className="w-5 h-5 text-gray-400" />
               ) : (
@@ -357,9 +406,15 @@ export default function ResultsViewerModal({
                         {finding.category.replace(/_/g, ' ')}
                       </h4>
                       <span
-                        className={`px-2 py-0.5 rounded text-xs font-semibold ${getRiskColor(finding.risk_level)}`}
+                        className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          hideRisk || finding.risk_level === 'PRELIMINARY'
+                            ? 'text-amber-800 bg-amber-50'
+                            : getRiskColor(finding.risk_level)
+                        }`}
                       >
-                        {finding.risk_level}
+                        {hideRisk || finding.risk_level === 'PRELIMINARY'
+                          ? 'PRELIMINARY'
+                          : finding.risk_level}
                       </span>
                     </div>
                     <p className="text-gray-300 text-sm mb-2">{finding.description}</p>
@@ -425,16 +480,40 @@ export default function ResultsViewerModal({
           {/* Timeline & cost */}
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-5">
-              <h3 className="text-sm font-bold text-gray-400 mb-2">Timeline</h3>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <h3 className="text-sm font-bold text-gray-400">Timeline</h3>
+                {unverifiedEstimates && (
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5">
+                    Unverified
+                  </span>
+                )}
+              </div>
               <p className="text-2xl font-black text-blue-400">
                 {analysis.summary.estimated_timeline}
               </p>
+              {unverifiedEstimates && (
+                <p className="text-xs text-amber-200/80 mt-2">
+                  {honestyLabels?.timeline || 'Confirm with AHJ / utility — not a quoted schedule.'}
+                </p>
+              )}
             </div>
             <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-5">
-              <h3 className="text-sm font-bold text-gray-400 mb-2">Estimated Cost</h3>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <h3 className="text-sm font-bold text-gray-400">Estimated Cost</h3>
+                {unverifiedEstimates && (
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5">
+                    Unverified
+                  </span>
+                )}
+              </div>
               <p className="text-2xl font-black text-green-400">
                 ${(analysis.summary.estimated_total_cost || 0).toLocaleString()}
               </p>
+              {unverifiedEstimates && (
+                <p className="text-xs text-amber-200/80 mt-2">
+                  {honestyLabels?.cost || 'Not an AHJ fee quote — confirm before bidding.'}
+                </p>
+              )}
             </div>
           </div>
         </div>

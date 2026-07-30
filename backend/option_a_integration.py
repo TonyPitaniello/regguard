@@ -64,10 +64,13 @@ async def run_option_a_analysis(
         )
         
         logger.info(f"✅ Punch list generated with {len(punch_list_data['punch_list'])} items")
-        
-        # Step 3: Combine for display/delivery
+
+        # Option A env parsers are still heuristic/stub — never treat risk as verified.
+        from honesty import apply_honesty_layer
+
         combined_analysis = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
+            "preview": True,
             "project_info": {
                 "address": address,
                 "city": city,
@@ -79,22 +82,34 @@ async def run_option_a_analysis(
             "environmental_screening": environmental_data,
             "punch_list": punch_list_data,
             "summary": {
-                "total_environmental_risks": len(environmental_data["findings"]),
-                "high_risk_count": sum(1 for f in environmental_data["findings"] if f["risk_level"] in ["HIGH", "CRITICAL"]),
+                "total_environmental_risks": len(environmental_data.get("findings") or []),
+                "high_risk_count": sum(
+                    1
+                    for f in (environmental_data.get("findings") or [])
+                    if f.get("risk_level") in ["HIGH", "CRITICAL"]
+                ),
                 "total_punch_list_items": len(punch_list_data["punch_list"]),
                 "estimated_timeline": punch_list_data["timeline_summary"],
                 "estimated_total_cost": punch_list_data["estimated_total_cost"],
+                "estimates_unverified": True,
             },
             "next_steps": [
-                "1. Review environmental findings and associated action items",
+                "1. Treat this as a preliminary checklist — risk scores are not parcel-verified",
                 "2. Contact your local Authority Having Jurisdiction (AHJ) with your punch list",
-                "3. For full analysis including professional PDFs and permit packages, upgrade to premium ($15,000)",
-                "Ready to upgrade? Click 'Upgrade to Full Report' to proceed to checkout.",
-            ]
+                "3. Confirm every dollar and day estimate with the AHJ / utility before bidding",
+                "4. Upgrade to Contractor Pro for citeable research memos with source URLs",
+            ],
         }
-        
-        logger.info(f"✅ Option A analysis complete")
-        return combined_analysis
+
+        stamped = apply_honesty_layer(
+            combined_analysis,
+            source="option_a",
+            risk_verified=False,
+            cost_verified=False,
+            timeline_verified=False,
+        )
+        logger.info("✅ Option A analysis complete (honesty layer applied)")
+        return stamped
         
     except Exception as e:
         logger.error(f"❌ Option A analysis failed: {e}")
@@ -119,14 +134,48 @@ def format_analysis_for_email(analysis: Dict[str, Any]) -> str:
         f"Project Type: {analysis['project_info']['type']}",
         f"Analysis Date: {analysis['timestamp']}",
         "",
+    ]
+
+    honesty = analysis.get("honesty") or {}
+    if honesty or analysis.get("preview"):
+        lines.extend(
+            [
+                "⚠ HONESTY NOTICE",
+                honesty.get("labels", {}).get(
+                    "risk",
+                    "Environmental risk scores are unverified preview data — not for bidding.",
+                ),
+                honesty.get("labels", {}).get(
+                    "cost",
+                    "Cost and timeline figures are unverified estimates — confirm with AHJ.",
+                ),
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
         "-" * 70,
         "ENVIRONMENTAL SCREENING SUMMARY",
         "-" * 70,
-        f"Overall Risk Level: {analysis['environmental_screening']['risk_level']}",
+        ]
+    )
+
+    risk_level = analysis["environmental_screening"].get("risk_level", "UNAVAILABLE")
+    if str(risk_level).upper() in ("UNAVAILABLE", "PRELIMINARY", "UNKNOWN") or not honesty.get(
+        "risk_verified"
+    ):
+        lines.append("Overall Risk Level: UNAVAILABLE (not verified — do not use for bidding)")
+    else:
+        lines.append(f"Overall Risk Level: {risk_level}")
+
+    lines.extend(
+        [
         f"Total Issues Found: {analysis['summary']['total_environmental_risks']}",
-        f"High/Critical Risk Count: {analysis['summary']['high_risk_count']}",
+        f"High/Critical Risk Count: {analysis['summary'].get('high_risk_count', 0)}",
         "",
-    ]
+        ]
+    )
     
     # Add environmental findings
     for finding in analysis['environmental_screening']['findings']:
@@ -144,8 +193,10 @@ def format_analysis_for_email(analysis: Dict[str, Any]) -> str:
         "YOUR ACTION PLAN (PUNCH LIST)",
         "-" * 70,
         f"Total Action Items: {analysis['summary']['total_punch_list_items']}",
-        f"Estimated Timeline: {analysis['summary']['estimated_timeline']}",
-        f"Estimated Total Cost: ${analysis['summary']['estimated_total_cost']:,.0f}",
+        f"Estimated Timeline: {analysis['summary']['estimated_timeline']} "
+        f"{'(unverified)' if not (analysis.get('honesty') or {}).get('timeline_verified') else ''}",
+        f"Estimated Total Cost: ${analysis['summary']['estimated_total_cost']:,.0f} "
+        f"{'(unverified — not an AHJ quote)' if not (analysis.get('honesty') or {}).get('cost_verified') else ''}",
         "",
         "TOP PRIORITY ITEMS:",
         "",

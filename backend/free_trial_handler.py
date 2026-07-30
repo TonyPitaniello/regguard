@@ -391,7 +391,7 @@ def _combine_memo_with_environmental(research_memo: str, analysis_data: Optional
 ENVIRONMENTAL ASSESSMENT
 {'─' * 60}
 
-Risk Level: {risk_level}
+Risk Level: UNAVAILABLE (not parcel-verified — do not use for bidding)
 
 Key Findings:
 {findings_text}

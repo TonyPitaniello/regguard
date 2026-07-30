@@ -1359,6 +1359,18 @@ async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
             zip_code=getattr(request_body, "zip", None) or "",
         )
 
+    # Honesty safety net: free-trial never returns confident stub risk scores
+    from honesty import apply_honesty_layer
+
+    if not (analysis.get("honesty") or {}).get("risk_verified"):
+        analysis = apply_honesty_layer(
+            analysis,
+            source=analysis.get("honesty", {}).get("source") or ("option_a" if analysis.get("preview") else "preview"),
+            risk_verified=False,
+            cost_verified=bool((analysis.get("honesty") or {}).get("cost_verified")),
+            timeline_verified=bool((analysis.get("honesty") or {}).get("timeline_verified")),
+        )
+
     return {
         "trial_id": trial_id,
         "status": status,
@@ -2971,9 +2983,12 @@ class ResearchDeliverySummary(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     risk_level: Optional[str] = None
+    risk_unavailable: Optional[bool] = None
     timeline: Optional[str] = None
     cost: Optional[float] = None
     address: Optional[str] = None
+    estimates_unverified: Optional[bool] = None
+    preview: Optional[bool] = None
 
 
 class SendSmsRequest(BaseModel):
@@ -2993,11 +3008,20 @@ class SendEmailRequest(BaseModel):
 
 def _research_data_from_summary(summary: ResearchDeliverySummary) -> Dict[str, Any]:
     """Convert a free-trial summary payload into delivery-service research_data shape."""
-    risk = (summary.risk_level or "UNKNOWN").upper()
-    high_risk = 1 if risk in ("HIGH", "CRITICAL") else 0
+    from honesty import apply_honesty_layer, UNAVAILABLE
+
+    unverified = bool(summary.estimates_unverified or summary.preview or summary.risk_unavailable)
+    risk_raw = (summary.risk_level or "").upper()
+    if summary.risk_unavailable or unverified or risk_raw in ("", "UNKNOWN", UNAVAILABLE, "PRELIMINARY"):
+        risk = UNAVAILABLE
+        high_risk = 0
+    else:
+        risk = risk_raw
+        high_risk = 1 if risk in ("HIGH", "CRITICAL") else 0
     cost = float(summary.cost or 0)
     timeline = summary.timeline or "TBD"
-    return {
+    payload = {
+        "preview": bool(summary.preview or unverified),
         "project_info": {
             "zip": summary.zip or "",
             "city": summary.city or "",
@@ -3010,18 +3034,30 @@ def _research_data_from_summary(summary: ResearchDeliverySummary) -> Dict[str, A
             "estimated_timeline": timeline,
             "total_environmental_risks": high_risk,
             "total_punch_list_items": 0,
+            "estimates_unverified": unverified,
         },
         "punch_list": {
             "punch_list": [],
             "critical_path": [],
             "estimated_total_cost": cost,
             "timeline_summary": timeline,
+            "estimates_unverified": unverified,
         },
         "environmental_screening": {
             "risk_level": risk,
             "findings": [],
+            "risk_score_hidden": risk == UNAVAILABLE,
         },
     }
+    if unverified or risk == UNAVAILABLE:
+        return apply_honesty_layer(
+            payload,
+            source="delivery_summary",
+            risk_verified=False,
+            cost_verified=False,
+            timeline_verified=False,
+        )
+    return payload
 
 
 def _resolve_research_data(
