@@ -16,6 +16,7 @@ import {
   VOICE_SUBMIT_EVENT,
   type VoiceFillDetail,
 } from '../voiceFillParse';
+import { getOwnerKey, setJobsEmail } from '../jobsOwner';
 
 function generateClientResearchId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -85,7 +86,10 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
     sessionStorage.setItem('analysisResults', JSON.stringify(honest));
     sessionStorage.setItem('researchId', id);
     const mail = email || formDataRef.current.email;
-    if (mail) sessionStorage.setItem('userEmail', mail);
+    if (mail) {
+      sessionStorage.setItem('userEmail', mail);
+      setJobsEmail(mail);
+    }
     setResearchId(id);
     setAnalysis(honest);
     setResultsOpen(true);
@@ -109,11 +113,75 @@ export default function FreeTrialForm({ showHero = false }: { showHero?: boolean
           sessionStorage.setItem('researchId', meta.research_id);
           setResearchId(meta.research_id);
           setAnalysis(withShare as AnalysisData);
+
+          // Upsert Saved Job (client) so /jobs works even if server auto-save missed
+          if (mail) {
+            const p = withShare.project_info;
+            void fetch(backendUrl('/jobs'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                owner_email: mail,
+                owner_key: getOwnerKey(),
+                address: p.address,
+                city: p.city,
+                state: p.state,
+                zip: p.zip,
+                project_type: p.type || formDataRef.current.projectType,
+                last_research_id: meta.research_id,
+                share_url: meta.share_url,
+                summary_snapshot: {
+                  estimated_timeline: withShare.summary?.estimated_timeline,
+                  estimated_total_cost: withShare.summary?.estimated_total_cost,
+                  risk_level: withShare.environmental_screening?.risk_level,
+                  preview: Boolean(withShare.preview),
+                  punch_count: withShare.summary?.total_punch_list_items,
+                },
+              }),
+            }).catch(() => undefined);
+          }
         }
       })
       .catch(() => {
         /* persist failure must not block results UI */
       });
+  }, []);
+
+  // Prefill from Saved Jobs "Re-run research"
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('regguard_job_prefill');
+      if (!raw) return;
+      sessionStorage.removeItem('regguard_job_prefill');
+      const pre = JSON.parse(raw) as {
+        address?: string;
+        city?: string;
+        state?: string;
+        zip?: string;
+        projectType?: string;
+        email?: string;
+      };
+      setFormData((prev) => ({
+        ...prev,
+        address: pre.address || prev.address,
+        city: pre.city || prev.city,
+        state: pre.state || prev.state,
+        zip: pre.zip || prev.zip,
+        projectType: pre.projectType || prev.projectType,
+        email: pre.email || prev.email,
+      }));
+      if (pre.address) {
+        setExternalLocation({
+          address: pre.address,
+          city: pre.city,
+          state: pre.state,
+          zip: pre.zip,
+        });
+      }
+      if (pre.email) setJobsEmail(pre.email);
+    } catch {
+      /* ignore bad prefill */
+    }
   }, []);
 
   const runResearch = useCallback(async () => {

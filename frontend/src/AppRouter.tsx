@@ -16,6 +16,7 @@ import MethodologyPage from './pages/MethodologyPage';
 import FreeTrialPage from './pages/FreeTrialPage';
 import ResultsPage from './pages/ResultsPage';
 import SharedReportPage from './pages/SharedReportPage';
+import JobsPage from './pages/JobsPage';
 import SampleReportPage from './pages/SampleReportPage';
 import PremiumCheckoutPage from './pages/PremiumCheckoutPage';
 import OrdersPage from './pages/OrdersPage';
@@ -98,6 +99,8 @@ export function AppRouter() {
           <Route path="/free-trial" element={<FreeTrialPage />} />
           <Route path="/results" element={<ResultsPage />} />
           <Route path="/r/:id" element={<SharedReportPage />} />
+          <Route path="/jobs" element={<JobsPage />} />
+          <Route path="/my-jobs" element={<JobsPage />} />
           
           {/* Orders and Payment */}
           <Route path="/order" element={<PremiumCheckoutPage />} />

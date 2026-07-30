@@ -11,6 +11,7 @@ import {
   BookOpen,
   Menu,
   X,
+  Briefcase,
 } from 'lucide-react';
 import { useState } from 'react';
 import './platform-layout.css';
@@ -35,6 +36,13 @@ const PLATFORM_ROUTES = [
     icon: Home,
     category: 'Main',
     description: 'RegGuard Site Diligence',
+  },
+  {
+    name: 'My Jobs',
+    path: '/jobs',
+    icon: Briefcase,
+    category: 'Main',
+    description: 'Saved site diligence',
   },
   // Queue, Study, Timeline, and other stubs hidden from production nav
   // They remain in code for future development but are not marketed

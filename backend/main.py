@@ -1382,6 +1382,37 @@ async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
     except Exception as persist_err:
         logger.warning(f"Free-trial persist failed (non-blocking): {persist_err}")
 
+    # Auto-save Saved Job for weekly habit (non-blocking)
+    job_id = None
+    try:
+        from jobs_store import upsert_job
+
+        project = analysis.get("project_info") or {}
+        summary = analysis.get("summary") or {}
+        email = getattr(request_body, "email", None) or ""
+        if email and (project.get("address") or request_body.address):
+            job = upsert_job(
+                owner_email=str(email),
+                address=str(project.get("address") or request_body.address),
+                city=str(project.get("city") or ""),
+                state=str(project.get("state") or ""),
+                zip_code=str(project.get("zip") or getattr(request_body, "zip", "") or ""),
+                project_type=str(project.get("type") or request_body.project_type or "general"),
+                last_research_id=str(research_id),
+                share_url=analysis.get("share_url"),
+                summary_snapshot={
+                    "estimated_timeline": summary.get("estimated_timeline"),
+                    "estimated_total_cost": summary.get("estimated_total_cost"),
+                    "risk_level": (analysis.get("environmental_screening") or {}).get("risk_level"),
+                    "preview": bool(analysis.get("preview")),
+                    "punch_count": summary.get("total_punch_list_items"),
+                },
+            )
+            job_id = job.get("id")
+            analysis["job_id"] = job_id
+    except Exception as job_err:
+        logger.warning(f"Free-trial auto-save job failed (non-blocking): {job_err}")
+
     return {
         "trial_id": trial_id,
         "status": status,
@@ -1389,6 +1420,7 @@ async def free_trial(request_body: FreeTrialRequest) -> Dict[str, Any]:
         "analysis_data": analysis,
         "research_id": research_id,
         "share_url": analysis.get("share_url"),
+        "job_id": job_id,
     }
 
 
@@ -3359,6 +3391,120 @@ async def get_research_report(research_id: str) -> Dict[str, Any]:
 async def get_research_report_short(research_id: str) -> Dict[str, Any]:
     """Alias for /research/{id}/report (API clients / curl). Frontend uses SPA /r/:id."""
     return await get_research_report(research_id)
+
+
+# ========== Saved Jobs (weekly habit) ==========
+
+class SaveJobRequest(BaseModel):
+    owner_email: str
+    address: str
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    zip: Optional[str] = ""
+    project_type: Optional[str] = "general"
+    owner_key: Optional[str] = None
+    job_id: Optional[str] = None
+    last_research_id: Optional[str] = None
+    share_url: Optional[str] = None
+    summary_snapshot: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = ""
+    status: Optional[str] = "active"
+
+
+class AttachResearchRequest(BaseModel):
+    research_id: str
+    share_url: Optional[str] = None
+    summary_snapshot: Optional[Dict[str, Any]] = None
+    owner_email: Optional[str] = None
+    owner_key: Optional[str] = None
+
+
+@app.post("/jobs", tags=["Jobs"])
+async def create_or_update_job(body: SaveJobRequest) -> Dict[str, Any]:
+    """Create or upsert a saved job (deduped by email + address)."""
+    from jobs_store import upsert_job
+
+    try:
+        job = upsert_job(
+            owner_email=body.owner_email,
+            address=body.address,
+            city=body.city or "",
+            state=body.state or "",
+            zip_code=body.zip or "",
+            project_type=body.project_type or "general",
+            owner_key=body.owner_key,
+            job_id=body.job_id,
+            last_research_id=body.last_research_id,
+            share_url=body.share_url,
+            summary_snapshot=body.summary_snapshot,
+            notes=body.notes or "",
+            status=body.status or "active",
+        )
+        return {"status": "ok", "job": job}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/jobs", tags=["Jobs"])
+async def list_saved_jobs(
+    email: str = "",
+    owner_key: str = "",
+    include_archived: bool = False,
+) -> Dict[str, Any]:
+    """List jobs for an email and/or owner_key (device id)."""
+    from jobs_store import list_jobs
+
+    if not email and not owner_key:
+        raise HTTPException(status_code=400, detail="email or owner_key is required")
+    jobs = list_jobs(email=email or None, owner_key=owner_key or None, include_archived=include_archived)
+    return {"jobs": jobs, "count": len(jobs)}
+
+
+@app.get("/jobs/{job_id}", tags=["Jobs"])
+async def get_saved_job(
+    job_id: str,
+    email: str = "",
+    owner_key: str = "",
+) -> Dict[str, Any]:
+    from jobs_store import get_job
+
+    job = get_job(job_id, email=email or None, owner_key=owner_key or None)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"job": job}
+
+
+@app.delete("/jobs/{job_id}", tags=["Jobs"])
+async def delete_saved_job(
+    job_id: str,
+    email: str = "",
+    owner_key: str = "",
+) -> Dict[str, Any]:
+    from jobs_store import delete_job
+
+    ok = delete_job(job_id, email=email or None, owner_key=owner_key or None)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"status": "deleted", "job_id": job_id}
+
+
+@app.post("/jobs/{job_id}/attach-research", tags=["Jobs"])
+async def attach_research_to_job(job_id: str, body: AttachResearchRequest) -> Dict[str, Any]:
+    from jobs_store import attach_research
+
+    job = attach_research(
+        job_id,
+        research_id=body.research_id,
+        share_url=body.share_url,
+        summary_snapshot=body.summary_snapshot,
+        email=body.owner_email,
+        owner_key=body.owner_key,
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"status": "ok", "job": job}
 
 
 def _running_on_vercel() -> bool:

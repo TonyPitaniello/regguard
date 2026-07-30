@@ -22,6 +22,13 @@ export function PlatformDashboard() {
           <div className="flex items-center gap-3 sm:gap-4">
             <button
               type="button"
+              onClick={() => navigate('/jobs')}
+              className="hidden sm:inline text-gray-300 hover:text-white transition text-sm font-semibold"
+            >
+              My Jobs
+            </button>
+            <button
+              type="button"
               onClick={() => navigate('/how-it-works')}
               className="hidden sm:inline text-gray-300 hover:text-white transition text-sm font-semibold"
             >

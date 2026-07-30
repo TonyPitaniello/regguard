@@ -254,6 +254,12 @@ export default function ResultsViewerModal({
                 Preview — unverified estimates · not AHJ quotes
               </p>
             )}
+            <a
+              href="/jobs"
+              className="mt-2 inline-flex text-xs font-semibold text-purple-300 hover:text-purple-200"
+            >
+              Saved to My Jobs →
+            </a>
           </div>
           <button
             type="button"
