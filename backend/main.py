@@ -1041,10 +1041,16 @@ def debug_routes() -> Dict[str, Any]:
 @app.get("/debug/config")
 def debug_config() -> Dict[str, Any]:
     """Debug endpoint: Check environment & startup state."""
+    route_paths = [getattr(r, "path", "") or "" for r in app.routes]
     return {
         "app_instance": str(type(app).__name__),
-        "has_research_route": any("/research" in str(r) for r in app.routes),
-        "has_payment_route": any("/auth" in str(r) for r in app.routes),
+        "has_research_route": any("/research" in p for p in route_paths),
+        "has_payment_route": any("/auth" in p for p in route_paths),
+        "has_send_email_route": any(p.endswith("/research/send-email") for p in route_paths),
+        "has_send_sms_route": any(p.endswith("/research/send-sms") for p in route_paths),
+        "has_jobs_route": any(p == "/jobs" or p.startswith("/jobs/") for p in route_paths),
+        "route_count": len(route_paths),
+        "git_sha": (os.getenv("RENDER_GIT_COMMIT") or os.getenv("REG_GUARD_GIT_SHA") or "")[:12],
         "environment_vars_loaded": {
             "firecrawl": bool(os.getenv("FIRECRAWL_API_KEY")),
             "stripe_secret": bool(os.getenv("STRIPE_SECRET_KEY")),
@@ -1054,6 +1060,7 @@ def debug_config() -> Dict[str, Any]:
             "sendgrid": bool(os.getenv("SENDGRID_API_KEY")),
             "resend": bool(os.getenv("RESEND_API_KEY")),
             "gemini": bool(os.getenv("GEMINI_API_KEY")),
+            "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN")),
         }
     }
 

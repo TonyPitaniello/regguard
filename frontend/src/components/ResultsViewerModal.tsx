@@ -275,93 +275,92 @@ export default function ResultsViewerModal({
           </button>
         </div>
 
-        {/* Text / Email + social share — always visible without scrolling results */}
-        <div className="px-5 sm:px-8 py-4 border-b border-emerald-500/30 bg-slate-950/90 shrink-0 space-y-3">
-          <SendResultsForm
-            researchId={effectiveResearchId}
-            summary={summary}
-            analysis={analysis}
-            defaultEmail={defaultEmail}
-            defaultPhone={defaultPhone}
-          />
+        {/* Single scroll region — send/share + findings (avoids sticky header eating viewport) */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-8 py-5 space-y-6">
+          <div className="space-y-3 pb-2 border-b border-emerald-500/30">
+            <SendResultsForm
+              researchId={effectiveResearchId}
+              summary={summary}
+              analysis={analysis}
+              defaultEmail={defaultEmail}
+              defaultPhone={defaultPhone}
+            />
 
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-purple-300/90 mb-2 flex items-center gap-2">
-              <Share2 className="w-3.5 h-3.5" />
-              Share results
-            </p>
-            {(analysis.share_url || effectiveResearchId) && (
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <a
-                  href={analysis.share_url || `${APP_URL}r/${effectiveResearchId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-100 text-sm font-semibold hover:bg-amber-500/20 transition"
-                >
-                  Open bid-file report
-                </a>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-purple-300/90 mb-2 flex items-center gap-2">
+                <Share2 className="w-3.5 h-3.5" />
+                Share results
+              </p>
+              {(analysis.share_url || effectiveResearchId) && (
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <a
+                    href={analysis.share_url || `${APP_URL}r/${effectiveResearchId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-100 text-sm font-semibold hover:bg-amber-500/20 transition"
+                  >
+                    Open bid-file report
+                  </a>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const url = analysis.share_url || `${APP_URL}r/${effectiveResearchId}`;
+                      await navigator.clipboard.writeText(url);
+                      showToast('Share link copied — paste into your bid file or GC email');
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-slate-600 bg-slate-800/80 text-gray-200 text-sm font-semibold hover:bg-slate-700 transition"
+                  >
+                    Copy /r/ link
+                  </button>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={async () => {
-                    const url = analysis.share_url || `${APP_URL}r/${effectiveResearchId}`;
-                    await navigator.clipboard.writeText(url);
-                    showToast('Share link copied — paste into your bid file or GC email');
-                  }}
+                  onClick={openWhatsApp}
+                  className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-sm font-semibold hover:bg-emerald-500/20 transition"
+                >
+                  WhatsApp
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openFacebook()}
+                  className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-blue-500/40 bg-blue-500/10 text-blue-200 text-sm font-semibold hover:bg-blue-500/20 transition"
+                >
+                  Facebook
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openInstagram()}
+                  className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-pink-500/40 bg-pink-500/10 text-pink-200 text-sm font-semibold hover:bg-pink-500/20 transition"
+                >
+                  Instagram
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void copyShareText('text')}
+                  className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-purple-500/40 bg-purple-500/10 text-purple-200 text-sm font-semibold hover:bg-purple-500/20 transition"
+                >
+                  {copied === 'text' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copied === 'text' ? 'Copied' : 'Copy'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void copyShareText('facebook')}
                   className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-slate-600 bg-slate-800/80 text-gray-200 text-sm font-semibold hover:bg-slate-700 transition"
                 >
-                  Copy /r/ link
+                  {copied === 'facebook' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copied === 'facebook' ? 'Copied for Facebook' : 'Copy for Facebook'}
                 </button>
               </div>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={openWhatsApp}
-                className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-sm font-semibold hover:bg-emerald-500/20 transition"
-              >
-                WhatsApp
-              </button>
-              <button
-                type="button"
-                onClick={() => void openFacebook()}
-                className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-blue-500/40 bg-blue-500/10 text-blue-200 text-sm font-semibold hover:bg-blue-500/20 transition"
-              >
-                Facebook
-              </button>
-              <button
-                type="button"
-                onClick={() => void openInstagram()}
-                className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-pink-500/40 bg-pink-500/10 text-pink-200 text-sm font-semibold hover:bg-pink-500/20 transition"
-              >
-                Instagram
-              </button>
-              <button
-                type="button"
-                onClick={() => void copyShareText('text')}
-                className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-purple-500/40 bg-purple-500/10 text-purple-200 text-sm font-semibold hover:bg-purple-500/20 transition"
-              >
-                {copied === 'text' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                {copied === 'text' ? 'Copied' : 'Copy'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void copyShareText('facebook')}
-                className="inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-lg border border-slate-600 bg-slate-800/80 text-gray-200 text-sm font-semibold hover:bg-slate-700 transition"
-              >
-                {copied === 'facebook' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                {copied === 'facebook' ? 'Copied for Facebook' : 'Copy for Facebook'}
-              </button>
+              {toast && (
+                <p className="mt-2 text-sm text-emerald-300" role="status">
+                  {toast}
+                </p>
+              )}
             </div>
-            {toast && (
-              <p className="mt-2 text-sm text-emerald-300" role="status">
-                {toast}
-              </p>
-            )}
           </div>
-        </div>
 
-        {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto px-5 sm:px-8 py-6 space-y-6">
           {(hideRisk || unverifiedEstimates) && (
             <div
               className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
@@ -437,37 +436,44 @@ export default function ResultsViewerModal({
             </button>
             {expanded.environmental && (
               <div className="space-y-3">
-                {(analysis.environmental_screening.findings || []).slice(0, 8).map((finding, idx) => (
-                  <div key={idx} className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-4">
-                    <div className="flex items-start justify-between mb-2 gap-2">
-                      <h4 className="font-bold text-white capitalize">
-                        {finding.category.replace(/_/g, ' ')}
-                      </h4>
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                          hideRisk || finding.risk_level === 'PRELIMINARY'
-                            ? 'text-amber-800 bg-amber-50'
-                            : getRiskColor(finding.risk_level)
-                        }`}
-                      >
-                        {hideRisk || finding.risk_level === 'PRELIMINARY'
-                          ? 'PRELIMINARY'
-                          : finding.risk_level}
-                      </span>
+                {(analysis.environmental_screening.findings || []).length === 0 ? (
+                  <p className="text-sm text-gray-400 border border-slate-700/60 rounded-lg p-4">
+                    No checklist notes in this preview yet. Scroll this panel or re-run after the API
+                    deploy includes full free-trial analysis.
+                  </p>
+                ) : (
+                  (analysis.environmental_screening.findings || []).slice(0, 8).map((finding, idx) => (
+                    <div key={idx} className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-2 gap-2">
+                        <h4 className="font-bold text-white capitalize">
+                          {(finding.category || 'note').replace(/_/g, ' ')}
+                        </h4>
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                            hideRisk || finding.risk_level === 'PRELIMINARY'
+                              ? 'text-amber-800 bg-amber-50'
+                              : getRiskColor(finding.risk_level)
+                          }`}
+                        >
+                          {hideRisk || finding.risk_level === 'PRELIMINARY'
+                            ? 'PRELIMINARY'
+                            : finding.risk_level}
+                        </span>
+                      </div>
+                      <p className="text-gray-300 text-sm mb-2">{finding.description}</p>
+                      {(finding.action_items || []).length > 0 && (
+                        <ul className="space-y-1">
+                          {finding.action_items.slice(0, 3).map((item, i) => (
+                            <li key={i} className="text-xs text-gray-400 flex gap-2">
+                              <span className="text-purple-400">•</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                    <p className="text-gray-300 text-sm mb-2">{finding.description}</p>
-                    {(finding.action_items || []).length > 0 && (
-                      <ul className="space-y-1">
-                        {finding.action_items.slice(0, 3).map((item, i) => (
-                          <li key={i} className="text-xs text-gray-400 flex gap-2">
-                            <span className="text-purple-400">•</span>
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             )}
           </section>

@@ -161,13 +161,27 @@ export default function SendResultsForm({
         setPhone('');
         return;
       }
-      setError(
-        'Text could not be sent (Twilio may be offline). Use “Open in Messages” below, or share via WhatsApp.',
-      );
+      let detail = '';
+      try {
+        const errBody = await response.json();
+        if (errBody?.detail) detail = String(errBody.detail);
+      } catch {
+        /* ignore */
+      }
+      if (response.status === 404) {
+        setError(
+          'Text API route missing on the server (backend needs redeploy). Use “Open in Messages” below for now.',
+        );
+      } else {
+        setError(
+          detail ||
+            'Text could not be sent (Twilio may be offline). Use “Open in Messages” below, or share via WhatsApp.',
+        );
+      }
       setShowSmsNativeFallback(true);
     } catch {
       setError(
-        'Text could not be sent (Twilio may be offline). Use “Open in Messages” below, or share via WhatsApp.',
+        'Text could not be sent (network error). Use “Open in Messages” below, or share via WhatsApp.',
       );
       setShowSmsNativeFallback(true);
     } finally {
@@ -205,11 +219,26 @@ export default function SendResultsForm({
         setEmailSuccess(`Email sent to ${email}`);
         return;
       }
-      // Server email (Resend/SendGrid) unavailable — auto-open mailto so users can still send
+      let detail = '';
+      try {
+        const errBody = await response.json();
+        if (errBody?.detail) detail = String(errBody.detail);
+      } catch {
+        /* ignore */
+      }
+      if (response.status === 404) {
+        setError(
+          'Email API route missing on the server (backend needs redeploy). Opening your email app as a backup…',
+        );
+      } else if (detail) {
+        setError(detail);
+      }
+      // Server email unavailable — open mailto so users can still send
       openNativeEmail(email);
       setEmailSuccess(`Opening your email app for ${email}…`);
     } catch {
       openNativeEmail(email);
+      setError('Could not reach the email API. Opening your email app as a backup…');
       setEmailSuccess(`Opening your email app for ${email}…`);
     } finally {
       setLoadingEmail(false);
