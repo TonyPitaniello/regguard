@@ -191,7 +191,7 @@ class ResearchMemoPDF(RegGuardPDF):
             self.multi_cell(
                 180,
                 8,
-                "UPGRADE TO FULL REPORT: Get professional PDFs with complete punch list and permit packages ($15,000)",
+                "NEXT: Contractor Pro ($149/mo) or IC Project Report ($1,500) — confirm fees with the AHJ before bidding.",
                 align="C",
                 border=1,
                 fill=True

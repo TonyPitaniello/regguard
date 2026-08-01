@@ -131,16 +131,33 @@ async def _run_research_and_email(
             logger.error("❌ Email service not configured")
             return
 
-        logger.info(f"📧 Combining memo with environmental data...")
-        combined_memo = _combine_memo_with_environmental(research_memo, environmental_screening)
+        # Prefer forwardable analysis email (full punch + honesty) when Option A ran.
+        # Never wrap free-trial mail in the legacy $15k teaser CTA.
+        success = False
+        if environmental_screening and not environmental_screening.get("error"):
+            try:
+                from research_store import save_research, share_url_for
 
-        logger.info(f"📧 Sending research memo to {email} (memo size: {len(combined_memo)} chars)...")
-        success = await email_service.send_research_memo(
-            to_email=email,
-            address=address,
-            research_memo=combined_memo,
-            trial_id=trial_id,
-        )
+                stamped = dict(environmental_screening)
+                meta = save_research(stamped, ttl_days=90)
+                stamped["research_id"] = meta.get("id")
+                stamped["share_url"] = meta.get("share_url") or share_url_for(meta.get("id") or "")
+                logger.info(f"📧 Sending forwardable result email to {email}...")
+                result = await email_service.send_research_result(email, stamped)
+                success = bool(result.get("email_id") or result.get("status") == "sent")
+            except Exception as fwd_err:
+                logger.warning(f"Forwardable email failed, falling back to memo: {fwd_err}")
+
+        if not success:
+            logger.info("📧 Combining memo with environmental data...")
+            combined_memo = _combine_memo_with_environmental(research_memo, environmental_screening)
+            logger.info(f"📧 Sending research memo to {email} (memo size: {len(combined_memo)} chars)...")
+            success = await email_service.send_research_memo(
+                to_email=email,
+                address=address,
+                research_memo=combined_memo,
+                trial_id=trial_id,
+            )
 
         if success:
             # Step 4: Mark memo as sent in database
@@ -224,93 +241,83 @@ def _format_memo_plaintext(
     address: str,
     project_type: str,
 ) -> str:
-    """Format research digest into clean, actionable plaintext memo"""
+    """Format research digest into an honest, forwardable plaintext memo."""
     import json
-    
-    # Parse the JSON digest
+
     try:
         digest_data = json.loads(research_digest) if isinstance(research_digest, str) else research_digest
     except (json.JSONDecodeError, TypeError):
         digest_data = {}
-    
-    # Extract jurisdiction info
-    jurisdiction = digest_data.get("jurisdiction", {})
+
+    jurisdiction = digest_data.get("jurisdiction", {}) if isinstance(digest_data, dict) else {}
     city = jurisdiction.get("city", "Unknown")
     state = jurisdiction.get("state", "Unknown")
-    county = jurisdiction.get("county", "Unknown")
-    
-    # Build clean memo
+    zip_code = str(digest_data.get("zip") or jurisdiction.get("zip") or "").strip()
+
     memo = f"""SITE DILIGENCE RESEARCH MEMO
 {'=' * 60}
 
 PROJECT LOCATION
 {address}
-{city}, {state}
+{city}, {state} {zip_code}
 
-PRELIMINARY FINDINGS
+HONESTY NOTICE
 {'─' * 60}
+• Environmental risk scores are NOT parcel-verified GIS data — do not use for bidding.
+• Dollar and day figures are unverified estimates unless an AHJ citation is shown below.
+• Confirm every fee and requirement with the local AHJ before you bid.
 
 """
-    
-    # Add jurisdiction-specific costs and requirements
-    if city.lower() == "plano":
-        memo += f"""PERMIT INFORMATION (Plano, TX)
-• Electrical Permit Cost: $75.00 total ($65 base + $10 laborer)
-• Key Regulation: Plano Ordinance 250.50 (Grounding Requirements)
-  - Must use two 8-foot grounding rods
-  - Spaced 20 feet apart
-  - Connected by 2/0 AWG conductor
 
-"""
-    
-    # Add research recommendations
-    targets = digest_data.get("universal_expert_scout_targets", {})
+    # Citeable AHJ catalog lines (Plano / Dallas / Austin)
+    fee_lines = digest_data.get("ahj_fee_lines") or []
+    gotcha_lines = digest_data.get("ahj_gotcha_lines") or []
+    if fee_lines or gotcha_lines or city.lower() == "plano":
+        memo += f"PERMIT / CODE (citeable — {city}, {state})\n{'─' * 60}\n"
+        for line in fee_lines:
+            memo += f"{line}\n"
+        if not fee_lines and city.lower() == "plano":
+            memo += (
+                "• Electrical permit (2026 Reg Guard sync): **$75.00** ($65 base + $10 laborer) — "
+                "confirm on City of Plano Building Inspections fee schedule.\n"
+                "• Plano Ordinance 250.50 grounding: two 8-foot rods, 20 feet apart, 2/0 AWG between rods.\n"
+            )
+        for line in gotcha_lines:
+            memo += f"{line}\n"
+        memo += "\n"
+
+    targets = digest_data.get("universal_expert_scout_targets", {}) or {}
     if targets:
-        memo += """RECOMMENDED NEXT STEPS
-To prepare for your permit application:
-"""
-        for key, target in targets.items():
+        memo += "RECOMMENDED NEXT CHECKS\n"
+        for _key, target in targets.items():
             memo += f"• {target}\n"
         memo += "\n"
-    
-    # Add scout results if any
-    scout_steps = digest_data.get("scout_steps", [])
-    if scout_steps and any(step.get("hits") for step in scout_steps):
-        memo += "RESOURCES FOUND\n"
+
+    scout_steps = digest_data.get("scout_steps", []) or []
+    if scout_steps and any(step.get("hits") for step in scout_steps if isinstance(step, dict)):
+        memo += "SOURCES FOUND\n"
         for step in scout_steps:
-            if step.get("hits"):
-                hits = step.get("hits", [])
-                memo += f"• {step.get('query')}: {len(hits)} source(s) found\n"
+            if isinstance(step, dict) and step.get("hits"):
+                memo += f"• {step.get('query')}: {len(step.get('hits') or [])} source(s)\n"
         memo += "\n"
-    
-    # Add environmental note
-    memo += """ENVIRONMENTAL ASSESSMENT
-This preliminary scan covers regulatory and permitting research.
-A full environmental assessment (premium feature) includes:
-• Wetlands analysis
-• Endangered species check
-• Flood zone mapping
-• Noise zone review
-• State-specific requirements
 
+    urls = digest_data.get("unique_source_urls") or digest_data.get("ahj_citation_urls") or []
+    if urls:
+        memo += "CITATION URLS\n"
+        for u in urls[:12]:
+            memo += f"• {u}\n"
+        memo += "\n"
+
+    memo += f"""NEXT STEP
+{'─' * 60}
+Open your results in the app (shareable /r/ report + punch list):
+https://app.regguardagent.com/
+
+Want ongoing citeable pre-bid punch lists? Contractor Pro is $149/mo.
+IC Project Report ($1,500 one-time) is the full packaged diligence report —
+not a $15,000 “upgrade” for this free lookup.
 """
-    
-    # Call to action
-    memo += """NEXT STEP: UPGRADE TO FULL REPORT ($15,000)
-────────────────────────────────────────────────────────────
 
-The premium report includes:
-✓ Complete permit package (ready to file)
-✓ Actionable punch list (what to do now)
-✓ Full environmental assessment
-✓ Same-day delivery via PDF
-
-This memo gives you research direction. The full report saves you
-weeks of work and helps avoid costly mistakes.
-
-Ready? Upgrade now to get your complete analysis.
-"""
-    
     return memo.strip()
 
 

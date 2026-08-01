@@ -117,18 +117,19 @@ class SendGridEmailService(EmailService):
                         </td>
                     </tr>
                     
-                    <!-- CTA -->
+                    <!-- CTA — honest pricing (never $15k for free-trial memo) -->
                     <tr>
                         <td style="padding: 0 30px 30px 30px; text-align: center;">
-                            <div style="background: linear-gradient(135deg, #f0f7ff 0%, #f3e8ff 100%); padding: 25px; border-radius: 6px; margin: 20px 0;">
+                            <div style="background: #f8fafc; padding: 25px; border-radius: 6px; margin: 20px 0; border: 1px solid #e2e8f0;">
                                 <p style="margin: 0 0 15px 0; font-size: 14px; font-weight: 600; color: #1f2937;">
-                                    Ready for the Complete Report?
+                                    Open your results in the app
                                 </p>
                                 <p style="margin: 0 0 20px 0; font-size: 13px; color: #555;">
-                                    The premium report includes actionable punch list, complete permit package, and full environmental assessment.
+                                    Contractor Pro is <strong>$149/mo</strong> for ongoing citeable pre-bid punch lists.
+                                    IC Project Report is <strong>$1,500</strong> one-time — not a $15,000 free-trial upsell.
                                 </p>
-                                <a href="https://app.regguardagent.com/order?trial={trial_id}" style="display: inline-block; background: #4f46e5; color: white; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px;">
-                                    Upgrade Now ($15,000)
+                                <a href="https://app.regguardagent.com/?trial={trial_id}" style="display: inline-block; background: #4f46e5; color: white; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px;">
+                                    Open RegGuard
                                 </a>
                             </div>
                         </td>
@@ -138,7 +139,7 @@ class SendGridEmailService(EmailService):
                     <tr style="border-top: 1px solid #e5e7eb;">
                         <td style="padding: 20px 30px; text-align: center; font-size: 12px; color: #888;">
                             <p style="margin: 0;">Questions? Reply to this email or contact <strong>support@regguardagent.com</strong></p>
-                            <p style="margin: 5px 0 0 0;">RegGuard © 2026</p>
+                            <p style="margin: 5px 0 0 0;">RegGuard © 2026 · Confirm fees with the AHJ before bidding</p>
                         </td>
                     </tr>
                 </table>
@@ -154,19 +155,14 @@ class SendGridEmailService(EmailService):
         return f"""{research_memo}
 
 ───────────────────────────────────────────────────────────────
-UPGRADE TO FULL REPORT ($15,000)
+OPEN RESULTS + PRICING
 ───────────────────────────────────────────────────────────────
 
-This memo gives you research direction. The premium report includes:
-✓ Actionable punch list (what to do)
-✓ Complete permit package (ready to file)
-✓ Full environmental assessment
-✓ Professional formatting
+Open the app: https://app.regguardagent.com/?trial={trial_id}
+Contractor Pro: $149/mo · IC Project Report: $1,500 one-time
+(Free-trial memos are not a $15,000 upgrade funnel.)
 
-Ready? Get your complete analysis:
-https://app.regguardagent.com/order?trial={trial_id}
-
-Questions? Reply to this email.
+Confirm every fee with the AHJ before bidding.
 
 RegGuard © 2026
 """
@@ -429,18 +425,19 @@ class ResendEmailService(EmailService):
                         </td>
                     </tr>
                     
-                    <!-- CTA -->
+                    <!-- CTA — honest pricing (never $15k for free-trial memo) -->
                     <tr>
                         <td style="padding: 0 30px 30px 30px; text-align: center;">
-                            <div style="background: linear-gradient(135deg, #f0f7ff 0%, #f3e8ff 100%); padding: 25px; border-radius: 6px; margin: 20px 0;">
+                            <div style="background: #f8fafc; padding: 25px; border-radius: 6px; margin: 20px 0; border: 1px solid #e2e8f0;">
                                 <p style="margin: 0 0 15px 0; font-size: 14px; font-weight: 600; color: #1f2937;">
-                                    Ready for the Complete Report?
+                                    Open your results in the app
                                 </p>
                                 <p style="margin: 0 0 20px 0; font-size: 13px; color: #555;">
-                                    The premium report includes actionable punch list, complete permit package, and full environmental assessment.
+                                    Contractor Pro is <strong>$149/mo</strong> for ongoing citeable pre-bid punch lists.
+                                    IC Project Report is <strong>$1,500</strong> one-time — not a $15,000 free-trial upsell.
                                 </p>
-                                <a href="https://app.regguardagent.com/order?trial={trial_id}" style="display: inline-block; background: #4f46e5; color: white; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px;">
-                                    Upgrade Now ($15,000)
+                                <a href="https://app.regguardagent.com/?trial={trial_id}" style="display: inline-block; background: #4f46e5; color: white; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px;">
+                                    Open RegGuard
                                 </a>
                             </div>
                         </td>
@@ -450,7 +447,7 @@ class ResendEmailService(EmailService):
                     <tr style="border-top: 1px solid #e5e7eb;">
                         <td style="padding: 20px 30px; text-align: center; font-size: 12px; color: #888;">
                             <p style="margin: 0;">Questions? Reply to this email or contact <strong>support@regguardagent.com</strong></p>
-                            <p style="margin: 5px 0 0 0;">RegGuard © 2026</p>
+                            <p style="margin: 5px 0 0 0;">RegGuard © 2026 · Confirm fees with the AHJ before bidding</p>
                         </td>
                     </tr>
                 </table>
